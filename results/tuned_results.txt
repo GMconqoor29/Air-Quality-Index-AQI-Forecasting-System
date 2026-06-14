@@ -1,0 +1,50 @@
+
+==================================================
+--- Log Started: 2026-06-13 23:18:00 ---
+==================================================
+Loading data for tuning...
+Data Split -> Train: 16684 | Val: 7584 | Test: 6068
+Sequences -> Train: (16631, 48, 13) | Val: (7531, 48, 13) | Test: (6015, 48, 13)
+
+Starting Optuna Hyperparameter Optimization...
+
+Optimization Finished!
+Best Trial: 14
+Best Val MSE: 0.0095
+Best Params:
+  lr: 0.0005109305302757767
+  hidden_size: 128
+  dropout: 0.38636786425967873
+  weight_decay: 0.0007674980652842404
+
+Retraining on Best Parameters...
+Epoch 01: Train MSE 0.0137 | Val MSE 0.0104
+Epoch 02: Train MSE 0.0104 | Val MSE 0.0110
+Epoch 03: Train MSE 0.0103 | Val MSE 0.0104
+Epoch 04: Train MSE 0.0100 | Val MSE 0.0095
+Epoch 05: Train MSE 0.0099 | Val MSE 0.0097
+Epoch 06: Train MSE 0.0097 | Val MSE 0.0113
+Epoch 07: Train MSE 0.0098 | Val MSE 0.0101
+Epoch 08: Train MSE 0.0096 | Val MSE 0.0104
+Epoch 09: Train MSE 0.0095 | Val MSE 0.0101
+==> Early stopping triggered
+Loading best model weights...
+Saved loss curve to results/tuned_loss_curve.png
+
+Evaluating Best Tuned Model...
+Train Scaled MSE: 0.0095
+Train Unscaled RMSE: 36.7836
+Train Unscaled MAE:  28.1340
+Val Scaled MSE: 0.0095
+Val Unscaled RMSE: 36.6806
+Val Unscaled MAE:  28.3657
+Tuned_Test Scaled MSE: 0.0128
+Tuned_Test Unscaled RMSE: 42.6969
+Tuned_Test Unscaled MAE:  33.0905
+Saved prediction plot to results/tuned_test_predictions.png
+
+--- Naive Baseline Comparison ---
+Test BASELINE (Persistence) Unscaled RMSE: 49.1951
+Test BASELINE (Persistence) Unscaled MAE:  36.8173
+
+Saved results/tuned_best_model.pt!

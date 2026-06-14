@@ -1,0 +1,73 @@
+
+==================================================
+--- Log Started: 2026-06-14 08:36:05 ---
+==================================================
+Loading data for tuning...
+Data Split -> Train: 16684 | Val: 7584 | Test: 6068
+Sequences -> Train: (16631, 48, 13) | Val: (7531, 48, 13) | Test: (6015, 48, 13)
+
+Starting Optuna Hyperparameter Optimization...
+
+Optimization Finished!
+Best Trial: 17
+Best Val MSE: 0.0093
+Best Params:
+  lr: 0.00010321505979414878
+  hidden_size: 256
+  dropout: 0.1773667461819669
+  weight_decay: 0.00047667291868620993
+
+Retraining on Best Parameters...
+Epoch 01: Train MSE 0.0189 | Val MSE 0.0113
+Epoch 02: Train MSE 0.0103 | Val MSE 0.0109
+Epoch 03: Train MSE 0.0100 | Val MSE 0.0104
+Epoch 04: Train MSE 0.0099 | Val MSE 0.0103
+Epoch 05: Train MSE 0.0098 | Val MSE 0.0100
+Epoch 06: Train MSE 0.0098 | Val MSE 0.0095
+Epoch 07: Train MSE 0.0097 | Val MSE 0.0104
+Epoch 08: Train MSE 0.0096 | Val MSE 0.0101
+Epoch 09: Train MSE 0.0096 | Val MSE 0.0099
+Epoch 10: Train MSE 0.0096 | Val MSE 0.0102
+Epoch 11: Train MSE 0.0095 | Val MSE 0.0094
+Epoch 12: Train MSE 0.0095 | Val MSE 0.0109
+Epoch 13: Train MSE 0.0095 | Val MSE 0.0100
+Epoch 14: Train MSE 0.0094 | Val MSE 0.0102
+Epoch 15: Train MSE 0.0094 | Val MSE 0.0094
+Epoch 16: Train MSE 0.0094 | Val MSE 0.0100
+Epoch 17: Train MSE 0.0093 | Val MSE 0.0106
+Epoch 18: Train MSE 0.0093 | Val MSE 0.0098
+Epoch 19: Train MSE 0.0093 | Val MSE 0.0098
+Epoch 20: Train MSE 0.0093 | Val MSE 0.0098
+Epoch 21: Train MSE 0.0093 | Val MSE 0.0097
+Epoch 22: Train MSE 0.0093 | Val MSE 0.0093
+Epoch 23: Train MSE 0.0092 | Val MSE 0.0111
+Epoch 24: Train MSE 0.0092 | Val MSE 0.0106
+Epoch 25: Train MSE 0.0093 | Val MSE 0.0093
+Epoch 26: Train MSE 0.0093 | Val MSE 0.0100
+Epoch 27: Train MSE 0.0092 | Val MSE 0.0098
+Epoch 28: Train MSE 0.0092 | Val MSE 0.0094
+Epoch 29: Train MSE 0.0092 | Val MSE 0.0096
+Epoch 30: Train MSE 0.0092 | Val MSE 0.0100
+Epoch 31: Train MSE 0.0092 | Val MSE 0.0109
+Epoch 32: Train MSE 0.0091 | Val MSE 0.0101
+==> Early stopping triggered
+Loading best model weights...
+Saved loss curve to results/tuned_loss_curve_20260614_083605.png
+
+Evaluating Best Tuned Model...
+Train Scaled MSE: 0.0093
+Train Unscaled RMSE: 36.2633
+Train Unscaled MAE:  27.6525
+Val Scaled MSE: 0.0093
+Val Unscaled RMSE: 36.3600
+Val Unscaled MAE:  28.4246
+Tuned_Test Scaled MSE: 0.0126
+Tuned_Test Unscaled RMSE: 42.2489
+Tuned_Test Unscaled MAE:  32.5958
+Saved prediction plot to results/tuned_test_predictions_20260614_083605.png
+
+--- Naive Baseline Comparison ---
+Test BASELINE (Persistence) Unscaled RMSE: 49.1951
+Test BASELINE (Persistence) Unscaled MAE:  36.8173
+
+Saved results/tuned_best_model_20260614_083605.pt!

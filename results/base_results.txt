@@ -1,0 +1,42 @@
+
+==================================================
+--- Log Started: 2026-06-14 07:26:04 ---
+==================================================
+Using device: cpu
+
+Loading and preprocessing data...
+Data Split -> Train: 16684 | Val: 7584 | Test: 6068
+Sequences -> Train: (16631, 48, 13) | Val: (7531, 48, 13) | Test: (6015, 48, 13)
+
+Initializing model...
+
+Starting training...
+Epoch 01: Train MSE 0.0137 | Val MSE 0.0122
+Epoch 02: Train MSE 0.0098 | Val MSE 0.0104
+Epoch 03: Train MSE 0.0093 | Val MSE 0.0106
+Epoch 04: Train MSE 0.0087 | Val MSE 0.0099
+Epoch 05: Train MSE 0.0083 | Val MSE 0.0098
+Epoch 06: Train MSE 0.0079 | Val MSE 0.0108
+Epoch 07: Train MSE 0.0079 | Val MSE 0.0105
+Epoch 08: Train MSE 0.0078 | Val MSE 0.0106
+Epoch 09: Train MSE 0.0076 | Val MSE 0.0122
+Epoch 10: Train MSE 0.0077 | Val MSE 0.0132
+==> Early stopping triggered
+Loading best model weights...
+Saved loss curve to results/base_loss_curve.png
+
+Evaluating best model...
+Train Scaled MSE: 0.0080
+Train Unscaled RMSE: 33.8095
+Train Unscaled MAE:  25.6609
+Val Scaled MSE: 0.0098
+Val Unscaled RMSE: 37.3349
+Val Unscaled MAE:  28.3239
+Base_Test Scaled MSE: 0.0120
+Base_Test Unscaled RMSE: 41.2659
+Base_Test Unscaled MAE:  32.0312
+Saved prediction plot to results/base_test_predictions.png
+
+--- Naive Baseline Comparison ---
+Test BASELINE (Persistence) Unscaled RMSE: 49.1951
+Test BASELINE (Persistence) Unscaled MAE:  36.8173

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# Virtual environments
+.venv/
+venv/
+
+# IDE/editor
+.vscode/
+.idea/
+
+# Generated Superpowers artifacts
+artifacts/superpowers/
+# If you want to keep the folder but not contents, use:
+# artifacts/superpowers/*
+# !artifacts/superpowers/.gitkeep
+
+# Generated logs
+e2e_demo/skill-activation.log
+
+# OS
+.DS_Store
+Thumbs.db

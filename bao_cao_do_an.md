@@ -52,6 +52,8 @@ graph TD
     J --> H
     L["utils.py<br/>DualLogger"] --> H
     M["run_xgb.py<br/>XGBoost (Lag Features)"] --> I
+    N["tune_xgb_main.py<br/>Tuned XGBoost (Optuna)"] --> I
+    N --> J
 ```
 
 #### Module Descriptions
@@ -140,18 +142,36 @@ pip install -r requirements.txt
 
 #### How to Run
 
-```bash
-# Train Base LSTM and Stacked LSTM models
-python main.py
+All entry points are located in the `main program/` directory:
 
-# Optimize hyperparameters + retrain with best params
-python tune_main.py
+```bash
+# Train Base LSTM model
+python "main program/main.py"
+
+# Train Stacked LSTM model
+python "main program/stacked_main.py"
 
 # Train and evaluate Single-layer GRU
-python run_gru.py
+python "main program/run_gru.py"
 
-# Train and evaluate XGBoost (Lag Features)
-python run_xgb.py
+# Train and evaluate XGBoost (Lag Features, default params)
+python "main program/run_xgb.py"
+
+# HPO + retrain: Tuned Base LSTM
+python "main program/tune_main.py"
+
+# HPO + retrain: Tuned Stacked LSTM
+python "main program/tune_stacked_main.py"
+
+# HPO + retrain: Tuned GRU
+python "main program/tune_gru_main.py"
+
+# HPO + retrain: Tuned XGBoost
+python "main program/tune_xgb_main.py"
+
+# Generate overlay comparison charts
+python compare_tuned_models.py
+python compare_tuned_vs_untuned.py
 ```
 
 #### Data Pipeline Process
@@ -259,16 +279,20 @@ The project was developed from an initial research notebook (`Dataset/Copy of Ai
 | Weight Decay | `0.0` | `1.226e-5` | `3.047e-5` | `6.782e-6` |
 
 #### XGBoost Model
-| Parameter | Tuned XGBoost (Best) |
-|---------|-----------------------|
-| `booster` | `gbtree` |
-| `eta` (learning rate) | `0.0349` |
-| `max_depth` | `5` |
-| `min_child_weight` | `7` |
-| `subsample` | `0.900` |
-| `colsample_bytree` | `0.385` |
-| `lambda` / `alpha` / `gamma` | `2.912e-7` / `1.401e-5` / `7.234e-7` |
-| `grow_policy` | `depthwise` |
+| Parameter | XGBoost (Default) | Tuned XGBoost (Best — Trial 15) |
+|---------|-------------------|----------------------------------|
+| `booster` | `gbtree` | `gbtree` |
+| `eta` (learning rate) | `0.05` | `0.0349` |
+| `max_depth` | `6` | `5` |
+| `min_child_weight` | `1` (default) | `7` |
+| `subsample` | `0.8` | `0.900` |
+| `colsample_bytree` | `0.8` | `0.385` |
+| `lambda` | `1.0` (default) | `2.912e-7` |
+| `alpha` | `0.0` (default) | `1.401e-5` |
+| `gamma` | `0.0` (default) | `7.234e-7` |
+| `grow_policy` | `depthwise` (default) | `depthwise` |
+| `num_boost_round` | `200` (early stop at 117) | `200` |
+| **Test RMSE** | **39.87** | **39.68** |
 
 ### 3.5. Loss Curves
 
@@ -294,33 +318,67 @@ The project was developed from an initial research notebook (`Dataset/Copy of Ai
 
 ### 3.7. Comprehensive Evaluation
 
-#### ✅ Requirements Achieved
+#### Consolidated Results Table
+
+All models were evaluated on the same chronological test set (6,015 sequences). The Naive Persistence Baseline (predicting AQI(t+6) = AQI(t)) serves as the reference point.
+
+| # | Model | Test RMSE | Test MAE | RMSE vs Baseline | Epochs / Rounds |
+|---|-------|:---------:|:-------:|:----------------:|:---------------:|
+| — | **Naive Persistence Baseline** | **49.20** | **36.82** | — | — |
+| 1 | Base LSTM (untuned) | 41.25 | 32.30 | −7.95 (−16.2%) | 7 |
+| 2 | Stacked LSTM (untuned) | 41.05 | 31.80 | −8.15 (−16.6%) | 12 |
+| 3 | Single-layer GRU (untuned) | 40.69 | 31.96 | −8.51 (−17.3%) | 9 |
+| 4 | XGBoost (default params) | 39.87 | 30.42 | −9.33 (−19.0%) | 117 rounds |
+| 5 | Tuned Base LSTM | 40.99 | 31.79 | −8.21 (−16.7%) | 29 |
+| 6 | Tuned Stacked LSTM | 40.87 | 31.59 | −8.33 (−16.9%) | 29 |
+| 7 | Tuned GRU | 40.46 | 31.39 | −8.74 (−17.8%) | 20 |
+| 8 | **Tuned XGBoost** | **39.68** | **30.28** | **−9.52 (−19.3%)** | 200 rounds |
+
+#### Key Findings
+
+1. **All 8 models beat the baseline** by a comfortable margin (7.95–9.52 RMSE points, or 16–19%), confirming that learned representations capture meaningful patterns beyond simple persistence.
+
+2. **XGBoost is the overall best performer.** Both untuned (RMSE 39.87) and tuned (RMSE 39.68) XGBoost outperform all neural-network variants. The lag-feature approach gives XGBoost direct access to recent temporal patterns without the smoothing effect inherent in RNN hidden states.
+
+3. **Tuning yields modest but consistent gains** across all architectures:
+   - Base LSTM: 41.25 → 40.99 (−0.26 RMSE)
+   - Stacked LSTM: 41.05 → 40.87 (−0.18 RMSE)
+   - GRU: 40.69 → 40.46 (−0.23 RMSE)
+   - XGBoost: 39.87 → 39.68 (−0.19 RMSE)
+   
+   The improvements are real but small (0.18–0.26 RMSE points), indicating that the default hyperparameters were already reasonable and that further gains are limited by the inherent difficulty of the forecasting task (MSE loss, extreme-value underprediction).
+
+4. **Among neural networks, the Tuned GRU achieves the best test performance** (RMSE 40.46, MAE 31.39), slightly outperforming the Tuned Stacked LSTM (RMSE 40.87) despite having fewer parameters (single layer vs. 2 layers). This suggests that for this dataset, additional depth does not provide meaningful benefit.
+
+5. **All RNN models share a common weakness:** severe underprediction at AQI peaks (>200). The predicted amplitude stays within ~85–195 while actual AQI ranges from 50–270. This is a structural limitation of MSE-trained models (regression toward the mean), not a flaw specific to any one architecture.
+
+#### Requirements Achieved
 
 | # | Requirement | Assessment |
 |---|---------|---------|
 | 1 | Use real-world IoT data | ✅ Hanoi air quality dataset (08/2022 – 02/2026), ~30,336 records |
-| 2 | Standard preprocessing | ✅ Preserved timeline, no data leakage, chronological split |
-| 3 | Diverse models | ✅ Base LSTM, Stacked LSTM, Tuned variants, GRU, XGBoost |
-| 4 | Hyperparameter tuning | ✅ Optuna Bayesian HPO (TPESampler + MedianPruner, 20 trials) |
-| 5 | Objective evaluation | ✅ Compared with Naive Persistence Baseline – all models outperformed by ~9-18 RMSE points |
-| 6 | Modular architecture | ✅ 8 separate modules in `src/` + distinct entry points |
-| 7 | Logging & reproducibility | ✅ DualLogger context-manager, fixed seed `42` |
+| 2 | Standard preprocessing | ✅ Preserved timeline, no data leakage, chronological split (70/10/20) |
+| 3 | Diverse models | ✅ 8 model variants: Base LSTM, Stacked LSTM, GRU, XGBoost (each untuned + tuned) |
+| 4 | Hyperparameter tuning | ✅ Optuna Bayesian HPO (TPESampler + MedianPruner, 20 trials per architecture) |
+| 5 | Objective evaluation | ✅ All models compared against Naive Persistence Baseline — outperformed by 7.95–9.52 RMSE points |
+| 6 | Modular architecture | ✅ 8 separate modules in `src/` + distinct entry points per model |
+| 7 | Logging & reproducibility | ✅ DualLogger context-manager, fixed seed `42`, timestamped result files |
 
 #### Strengths
 
-- **Robust Pipeline:** No data leakage, continuous timeline, standard chronological split.
-- **Modular & Reusable:** Easy to add features, change models, or integrate APIs.
-- **Reproducible:** Fixed seeds, comprehensive logs, separate checkpoints per trial.
-- **Automated HPO:** Optuna automatically searched hyperparameter spaces, with pruning to save time.
-- **Multi-architecture comparison:** Expanded beyond LSTM to include GRU and XGBoost for comprehensive comparison.
+- **Robust Pipeline:** No data leakage, continuous timeline, standard chronological split with clear separation between train/val/test.
+- **Modular & Reusable:** Each component (`data_loader`, `model`, `train`, `tune`, `evaluate`, `visualize`, `config`, `utils`) can be independently modified or extended.
+- **Reproducible:** Fixed random seeds, comprehensive logs (DualLogger), and saved model checkpoints (`.pt` / `.json`) for every run.
+- **Automated HPO:** Optuna automatically searched hyperparameter spaces across all 4 architectures, with median pruning to efficiently discard underperforming trials.
+- **Multi-architecture comparison:** Comprehensive evaluation spanning 3 neural network families (LSTM, Stacked LSTM, GRU) and 1 gradient-boosted tree model (XGBoost), each with untuned and tuned variants — 8 models total.
 
 #### Weaknesses & Future Directions
 
-- **No real-time IoT integration:** Current pipeline runs offline on CSV data – requires REST API or MQTT connector to receive real-time sensor data.
-- **Underpredicting AQI peaks:** All models tend to underpredict when AQI spikes (> 200). Can be improved with specialized Loss functions (Huber Loss, Quantile Loss) or oversampling techniques for high AQI samples.
-- **Not fully fine-tuned XGBoost:** XGBoost currently runs with default parameters and already achieves the best results – after tuning it could be even better. *(Note: Tuning was added later but the statement still holds contextual value regarding further tuning).*
-- **Multi-step forecasting:** Currently only predicting at t+6; can be expanded to multi-step forecasting (t+1 to t+24).
-- **Future directions:** Explore Transformer/Attention architectures or combine (Ensemble) LSTM with XGBoost.
+- **No real-time IoT integration:** The current pipeline runs offline on CSV data. Deploying as a live forecasting service would require a REST API or MQTT connector to receive real-time sensor data.
+- **Underpredicting AQI peaks:** All models systematically underpredict when AQI exceeds ~200 — a structural limitation of MSE loss which biases predictions toward the mean. Potential improvements include asymmetric loss functions (Huber Loss, Quantile Loss), oversampling high-AQI training samples, or post-hoc calibration.
+- **Diminishing returns from HPO:** Tuning improved all models by only 0.18–0.26 RMSE points. The next meaningful accuracy gains likely require architectural changes (attention mechanisms, Transformer-based models) or richer input features (weather forecasts, satellite data) rather than further hyperparameter search.
+- **Single-horizon forecasting:** Currently only predicting at t+6h. Multi-step forecasting (t+1 to t+24) would provide a more complete and practical outlook for air quality management.
+- **Future directions:** Explore Transformer/Attention architectures for better long-range dependency modeling, experiment with ensemble methods combining LSTM/GRU with XGBoost, and investigate alternative loss functions to improve peak-AQI capture.
 
 ---
 
@@ -348,21 +406,32 @@ GR1/
 │   ├── evaluate.py               # Metrics calculation + persistence baseline
 │   ├── visualize.py              # Chart plotting
 │   └── utils.py                  # DualLogger context manager
+├── main program/                 # Entry points
+│   ├── main.py                   # Base LSTM training
+│   ├── stacked_main.py           # Stacked LSTM training
+│   ├── run_gru.py                # Single-layer GRU training
+│   ├── run_xgb.py                # XGBoost (default params) training
+│   ├── tune_main.py              # HPO: Tuned Base LSTM
+│   ├── tune_stacked_main.py      # HPO: Tuned Stacked LSTM
+│   ├── tune_gru_main.py          # HPO: Tuned GRU
+│   └── tune_xgb_main.py          # HPO: Tuned XGBoost
 ├── Dataset/                      # Raw datasets
 │   ├── archive/                  # CSV files (air quality data)
 │   └── Copy of Air Quality ForeCasting.ipynb  # Original research notebook
 ├── results/                      # Execution results
 │   ├── base_results.txt          # Base LSTM run log
 │   ├── stacked_results.txt       # Stacked LSTM run log
-│   ├── tuned_results_*.txt       # Tuned models run logs
 │   ├── gru_results.txt           # GRU run log
 │   ├── xgb_results.txt           # XGBoost run log
+│   ├── tuned_results_*.txt       # Tuned Base LSTM run logs
+│   ├── tuned_stacked_results_*.txt  # Tuned Stacked LSTM run logs
+│   ├── tuned_gru_results_*.txt   # Tuned GRU run logs
+│   ├── tuned_xgb_results_*.txt   # Tuned XGBoost run logs
 │   ├── *_loss_curve.png          # Loss curves charts
-│   └── *_test_predictions.png   # Prediction charts
-├── main.py                       # Entry point: Base LSTM + Stacked LSTM
-├── tune_main.py                  # Entry point: HPO + training tuned models
-├── run_gru.py                    # Entry point: Single-layer GRU
-├── run_xgb.py                    # Entry point: XGBoost (Lag Features)
+│   ├── *_test_predictions.png    # Prediction charts
+│   └── tuned_models_overlay.png  # All tuned models comparison
+├── compare_tuned_models.py       # Overlay chart: all tuned models
+├── compare_tuned_vs_untuned.py   # Overlay chart: untuned vs tuned per model
 ├── requirements.txt              # Dependencies
 └── bao_cao_do_an.md              # Project report (this file)
 ```

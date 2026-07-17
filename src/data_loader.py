@@ -25,7 +25,7 @@ def create_sequences(data, window_size, horizon, target_idx=0):
         y.append(data[i + horizon, target_idx])          
     return np.array(X, dtype=np.float32), np.array(y, dtype=np.float32)
 
-def load_and_preprocess_data(data_dir='archive'):
+def load_and_preprocess_data(data_dir='Dataset/archive'):
     # Load all CSV files in the archive directory
     csv_files = glob.glob(os.path.join(data_dir, '*.csv'))
     if not csv_files:
@@ -62,7 +62,7 @@ def load_and_preprocess_data(data_dir='archive'):
     
     return df
 
-def get_dataloaders(data_dir='archive'):
+def get_dataloaders(data_dir='Dataset/archive'):
     df = load_and_preprocess_data(data_dir)
     
     # Chronological Split
@@ -98,6 +98,42 @@ def get_dataloaders(data_dir='archive'):
     te_ld = DataLoader(AQIDataset(X_te, y_te), batch_size=config.BATCH_SIZE, shuffle=False)
     
     return tr_ld, va_ld, te_ld, scaler
+
+def get_xgboost_data(data_dir='Dataset/archive'):
+    df = load_and_preprocess_data(data_dir)
+    
+    # Chronological Split
+    n = len(df)
+    train_end = int(n * config.TRAIN_RATIO)
+    val_end = train_end + int(n * config.VAL_RATIO)
+    
+    tr = df.iloc[:train_end][config.FEATURE_COLS].values
+    va = df.iloc[train_end:val_end][config.FEATURE_COLS].values
+    te = df.iloc[val_end:][config.FEATURE_COLS].values
+    
+    print(f"XGBoost Data Split -> Train: {len(tr)} | Val: {len(va)} | Test: {len(te)}")
+    
+    # Scale features (fit on train only!)
+    scaler = MinMaxScaler()
+    tr_s = scaler.fit_transform(tr)
+    va_s = scaler.transform(va)
+    te_s = scaler.transform(te)
+    
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    
+    # Create Sequences
+    X_tr, y_tr = create_sequences(tr_s, config.WINDOW_SIZE, config.HORIZON, target_idx)
+    X_va, y_va = create_sequences(va_s, config.WINDOW_SIZE, config.HORIZON, target_idx)
+    X_te, y_te = create_sequences(te_s, config.WINDOW_SIZE, config.HORIZON, target_idx)
+    
+    # Flatten the sequences for XGBoost (batch, seq * features)
+    X_tr_flat = X_tr.reshape(X_tr.shape[0], -1)
+    X_va_flat = X_va.reshape(X_va.shape[0], -1)
+    X_te_flat = X_te.reshape(X_te.shape[0], -1)
+    
+    print(f"XGBoost Lag Features -> Train: {X_tr_flat.shape} | Val: {X_va_flat.shape} | Test: {X_te_flat.shape}")
+    
+    return X_tr_flat, y_tr, X_va_flat, y_va, X_te_flat, y_te, scaler
 
 if __name__ == "__main__":
     # Test block to verify

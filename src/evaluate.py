@@ -72,3 +72,36 @@ def print_baseline_metrics(loader, scaler, prefix="Test"):
     print(f"{prefix} BASELINE (Persistence) Unscaled MAE:  {mae:.4f}")
     
     return rmse, mae
+
+def print_xgb_evaluation_metrics(bst, dmatrix, y_true, scaler, prefix="Test", plot=False, plot_save_path=None):
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    
+    # Get scaled predictions
+    preds = bst.predict(dmatrix)
+    loss = mean_squared_error(y_true, preds)
+    
+    # Unscale predictions and true values
+    preds_unscaled = inverse_scale_predictions(scaler, preds.reshape(-1, 1), target_idx)
+    y_true_unscaled = inverse_scale_predictions(scaler, y_true.reshape(-1, 1), target_idx)
+    
+    # Calculate metrics
+    mse = mean_squared_error(y_true_unscaled, preds_unscaled)
+    rmse = np.sqrt(mse)
+    mae = mean_absolute_error(y_true_unscaled, preds_unscaled)
+    
+    print(f"{prefix} Scaled MSE: {loss:.4f}")
+    print(f"{prefix} Unscaled RMSE: {rmse:.4f}")
+    print(f"{prefix} Unscaled MAE:  {mae:.4f}")
+    
+    if plot:
+        from src.visualize import plot_predictions
+        if plot_save_path is None:
+            plot_save_path = f"results/{prefix.lower()}_predictions.png"
+        plot_predictions(
+            y_true_unscaled, 
+            preds_unscaled, 
+            title=f"{prefix} Set: Actual vs Predicted AQI (t+{config.HORIZON})", 
+            save_path=plot_save_path
+        )
+    
+    return loss, rmse, mae

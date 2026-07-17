@@ -1,0 +1,38 @@
+
+==================================================
+--- Log Started: 2026-07-16 23:11:52 ---
+==================================================
+Loading and flattening data for XGBoost...
+XGBoost Data Split -> Train: 21235 | Val: 3033 | Test: 6068
+XGBoost Lag Features -> Train: (21182, 624) | Val: (2980, 624) | Test: (6015, 624)
+
+Initializing XGBoost model...
+
+Starting training...
+[0]	validation_0-rmse:0.12710	validation_1-rmse:0.13221
+[10]	validation_0-rmse:0.10058	validation_1-rmse:0.10447
+[20]	validation_0-rmse:0.08676	validation_1-rmse:0.09043
+[30]	validation_0-rmse:0.07919	validation_1-rmse:0.08350
+[40]	validation_0-rmse:0.07464	validation_1-rmse:0.07988
+[50]	validation_0-rmse:0.07139	validation_1-rmse:0.07799
+[60]	validation_0-rmse:0.06890	validation_1-rmse:0.07712
+[70]	validation_0-rmse:0.06694	validation_1-rmse:0.07637
+[80]	validation_0-rmse:0.06524	validation_1-rmse:0.07608
+[90]	validation_0-rmse:0.06371	validation_1-rmse:0.07565
+[100]	validation_0-rmse:0.06233	validation_1-rmse:0.07555
+[110]	validation_0-rmse:0.06106	validation_1-rmse:0.07559
+[116]	validation_0-rmse:0.06046	validation_1-rmse:0.07566
+
+Evaluating best model...
+Train Scaled MSE: 0.0038
+Train Unscaled RMSE: 24.2739
+Train Unscaled MAE:  18.6621
+Val Scaled MSE: 0.0057
+Val Unscaled RMSE: 29.6919
+Val Unscaled MAE:  22.5971
+Test Scaled MSE: 0.0102
+Test Unscaled RMSE: 39.8709
+Test Unscaled MAE:  30.4246
+
+Saving test predictions plot...
+Saved prediction plot to results/xgb_test_predictions.png

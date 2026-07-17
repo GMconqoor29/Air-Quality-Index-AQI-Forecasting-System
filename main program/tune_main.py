@@ -1,3 +1,7 @@
+import sys
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import optuna
 import torch
 import torch.nn as nn
@@ -20,16 +24,18 @@ def main():
         
         print("\nStarting Optuna Hyperparameter Optimization...")
         # Create study with a MedianPruner to automatically stop unpromising trials early
+        # Provide a seeded sampler for reproducible hyperparameter sampling
         study = optuna.create_study(
             direction="minimize", 
+            sampler=optuna.samplers.TPESampler(seed=config.RANDOM_SEED),
             pruner=optuna.pruners.MedianPruner(n_startup_trials=5, n_warmup_steps=3)
         )
         
-        # Run 20 trials in parallel across 2 CPU cores
+        # Run 20 trials. n_jobs=1 is required for exact reproducibility
         study.optimize(
             lambda trial: objective(trial, tr_ld, va_ld, config.DEVICE), 
             n_trials=20,
-            n_jobs=2
+            n_jobs=1
         )
         
         print("\nOptimization Finished!")

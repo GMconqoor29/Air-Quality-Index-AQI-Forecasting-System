@@ -12,9 +12,9 @@ WINDOW_SIZE = 48
 HORIZON = 6
 
 # Data split ratios
-TRAIN_RATIO = 0.55
-VAL_RATIO = 0.25
-TEST_RATIO = 0.20
+TRAIN_RATIO = 0.7
+VAL_RATIO = 0.1
+TEST_RATIO = 0.2
 
 # Hyperparameters
 BATCH_SIZE = 64
@@ -29,7 +29,11 @@ RANDOM_SEED = 42
 
 def set_seed(seed: int = 42) -> None:
     import numpy as np
+    import random
+    random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+        torch.backends.cudnn.deterministic = True
+        torch.backends.cudnn.benchmark = False

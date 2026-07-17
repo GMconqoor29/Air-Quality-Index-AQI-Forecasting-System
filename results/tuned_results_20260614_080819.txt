@@ -1,9 +1,0 @@
-
-==================================================
---- Log Started: 2026-06-14 08:08:19 ---
-==================================================
-Loading data for tuning...
-Data Split -> Train: 16684 | Val: 7584 | Test: 6068
-Sequences -> Train: (16631, 48, 13) | Val: (7531, 48, 13) | Test: (6015, 48, 13)
-
-Starting Optuna Hyperparameter Optimization...

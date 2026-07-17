@@ -1,0 +1,46 @@
+
+==================================================
+--- Log Started: 2026-07-17 07:54:06 ---
+==================================================
+Loading data for XGBoost tuning...
+XGBoost Data Split -> Train: 21235 | Val: 3033 | Test: 6068
+XGBoost Lag Features -> Train: (21182, 624) | Val: (2980, 624) | Test: (6015, 624)
+
+Starting Optuna Hyperparameter Optimization for XGBoost...
+
+Optimization Finished!
+Best Trial: 15
+Best Val MSE: 0.0059
+Best Params:
+  booster: gbtree
+  lambda: 2.9124871827827306e-07
+  alpha: 1.4012642299030913e-05
+  subsample: 0.900547036892562
+  colsample_bytree: 0.3846984381649392
+  max_depth: 5
+  min_child_weight: 7
+  eta: 0.03490682771863796
+  gamma: 7.234418163562393e-07
+  grow_policy: depthwise
+
+Retraining on Best Parameters...
+
+Evaluating Best XGBoost Model...
+Train Scaled MSE: 0.0047
+Train Unscaled RMSE: 27.0203
+Train Unscaled MAE:  20.7062
+Val Scaled MSE: 0.0057
+Val Unscaled RMSE: 29.7005
+Val Unscaled MAE:  22.8860
+Test Scaled MSE: 0.0101
+Test Unscaled RMSE: 39.6817
+Test Unscaled MAE:  30.2843
+Saved prediction plot to results/tuned_xgb_test_predictions_20260717_075406.png
+
+--- Naive Baseline Comparison ---
+Data Split -> Train: 21235 | Val: 3033 | Test: 6068
+Sequences -> Train: (21182, 48, 13) | Val: (2980, 48, 13) | Test: (6015, 48, 13)
+Test BASELINE (Persistence) Unscaled RMSE: 49.1951
+Test BASELINE (Persistence) Unscaled MAE:  36.8173
+
+Saved results/tuned_best_xgb_20260717_075406.json!

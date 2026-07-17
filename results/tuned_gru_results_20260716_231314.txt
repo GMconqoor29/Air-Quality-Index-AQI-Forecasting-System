@@ -1,0 +1,61 @@
+
+==================================================
+--- Log Started: 2026-07-16 23:13:14 ---
+==================================================
+Loading data for GRU tuning...
+Data Split -> Train: 21235 | Val: 3033 | Test: 6068
+Sequences -> Train: (21182, 48, 13) | Val: (2980, 48, 13) | Test: (6015, 48, 13)
+
+Starting Optuna Hyperparameter Optimization for GRU...
+
+Optimization Finished!
+Best Trial: 11
+Best Val MSE: 0.0056
+Best Params:
+  lr: 0.000851016173602611
+  hidden_size: 256
+  dropout: 0.3595634187826221
+  weight_decay: 6.781978611606862e-06
+
+Retraining on Best Parameters...
+Epoch 01: Train MSE 0.0107 | Val MSE 0.0062
+Epoch 02: Train MSE 0.0087 | Val MSE 0.0062
+Epoch 03: Train MSE 0.0082 | Val MSE 0.0062
+Epoch 04: Train MSE 0.0080 | Val MSE 0.0062
+Epoch 05: Train MSE 0.0079 | Val MSE 0.0063
+Epoch 06: Train MSE 0.0077 | Val MSE 0.0058
+Epoch 07: Train MSE 0.0076 | Val MSE 0.0057
+Epoch 08: Train MSE 0.0075 | Val MSE 0.0061
+Epoch 09: Train MSE 0.0075 | Val MSE 0.0059
+Epoch 10: Train MSE 0.0074 | Val MSE 0.0056
+Epoch 11: Train MSE 0.0073 | Val MSE 0.0060
+Epoch 12: Train MSE 0.0073 | Val MSE 0.0064
+Epoch 13: Train MSE 0.0073 | Val MSE 0.0056
+Epoch 14: Train MSE 0.0073 | Val MSE 0.0062
+Epoch 15: Train MSE 0.0073 | Val MSE 0.0056
+Epoch 16: Train MSE 0.0072 | Val MSE 0.0057
+Epoch 17: Train MSE 0.0071 | Val MSE 0.0056
+Epoch 18: Train MSE 0.0071 | Val MSE 0.0058
+Epoch 19: Train MSE 0.0071 | Val MSE 0.0058
+Epoch 20: Train MSE 0.0071 | Val MSE 0.0057
+==> Early stopping triggered
+Loading best model weights...
+Saved loss curve to results/tuned_gru_loss_20260716_231314.png
+
+Evaluating Best GRU Model...
+Train Scaled MSE: 0.0069
+Train Unscaled RMSE: 32.8135
+Train Unscaled MAE:  25.2708
+Val Scaled MSE: 0.0056
+Val Unscaled RMSE: 29.3865
+Val Unscaled MAE:  21.7875
+Test Scaled MSE: 0.0105
+Test Unscaled RMSE: 40.4583
+Test Unscaled MAE:  31.3893
+Saved prediction plot to results/tuned_gru_test_predictions_20260716_231314.png
+
+--- Naive Baseline Comparison ---
+Test BASELINE (Persistence) Unscaled RMSE: 49.1951
+Test BASELINE (Persistence) Unscaled MAE:  36.8173
+
+Saved results/tuned_best_gru_20260716_231314.pt!

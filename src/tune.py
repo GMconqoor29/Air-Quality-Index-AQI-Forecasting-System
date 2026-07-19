@@ -166,7 +166,7 @@ def xgb_objective(trial, X_tr, y_tr, X_va, y_va):
     dvalid = xgb.DMatrix(X_va, label=y_va)
 
     try:
-        from optuna.integration import XGBoostPruningCallback
+        from optuna_integration import XGBoostPruningCallback
         pruning_callback = XGBoostPruningCallback(trial, "validation-rmse")
         callbacks = [pruning_callback]
     except ImportError:

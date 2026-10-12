@@ -18,7 +18,18 @@ def main():
     with DualLogger(f"results/tuned_xgb_results_{run_id}.txt") as logger:
         config.set_seed(config.RANDOM_SEED)
         print("Loading data for XGBoost tuning...")
-        X_tr_flat, y_tr, X_va_flat, y_va, X_te_flat, y_te, scaler = get_xgboost_data(data_dir='Dataset/archive')
+        (
+            X_tr_flat,
+            y_tr,
+            X_va_flat,
+            y_va,
+            X_te_flat,
+            y_te,
+            scaler,
+            test_timestamps,
+        ) = get_xgboost_data(
+            data_dir='Dataset/archive', include_target_timestamps=True
+        )
         
         print("\nStarting Optuna Hyperparameter Optimization for XGBoost...")
         study = optuna.create_study(
@@ -62,7 +73,16 @@ def main():
         print("\nEvaluating Best XGBoost Model...")
         print_xgb_evaluation_metrics(bst, dtrain, y_tr, scaler, prefix="Train")
         print_xgb_evaluation_metrics(bst, dvalid, y_va, scaler, prefix="Val")
-        print_xgb_evaluation_metrics(bst, dtest, y_te, scaler, prefix="Test", plot=True, plot_save_path=f"results/tuned_xgb_test_predictions_{run_id}.png")
+        print_xgb_evaluation_metrics(
+            bst,
+            dtest,
+            y_te,
+            scaler,
+            prefix="Test",
+            plot=True,
+            plot_save_path=f"results/tuned_xgb_test_predictions_{run_id}.png",
+            timestamps=test_timestamps,
+        )
         
         print("\n--- Naive Baseline Comparison ---")
         _, _, te_ld, _ = get_dataloaders(data_dir='Dataset/archive')

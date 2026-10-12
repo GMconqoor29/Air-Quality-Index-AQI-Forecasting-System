@@ -10,6 +10,11 @@ FEATURE_COLS = ["AQI", "PM25", "PM10", "CO", "NO2", "O3", "SO2",
 # Time series parameters
 WINDOW_SIZE = 48
 HORIZON = 6
+MAX_FORWARD_FILL_HOURS = 1
+
+# Evaluation cutoff used to describe high-AQI forecast performance. This is
+# an experiment threshold, not an official AQI warning threshold.
+PEAK_AQI_THRESHOLD = 200.0
 
 # Data split ratios
 TRAIN_RATIO = 0.7

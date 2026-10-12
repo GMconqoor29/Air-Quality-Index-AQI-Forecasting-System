@@ -1,3 +1,4 @@
+import torch
 import torch.nn as nn
 from src import config
 
@@ -36,6 +37,54 @@ class GRUAQIModel(nn.Module):
         out, h_n = self.gru(x)
         # For GRU, h_n is of shape (num_layers, batch, hidden_size)
         return self.fc(self.dropout(h_n[-1]))
+
+
+class CNNRecurrentAttentionAQIModel(nn.Module):
+    def __init__(
+        self,
+        recurrent_type="GRU",
+        input_size=len(config.FEATURE_COLS),
+        conv_channels=64,
+        hidden_size=config.HIDDEN_SIZE,
+        dropout=config.DROPOUT,
+    ):
+        super().__init__()
+        recurrent_type = recurrent_type.upper()
+        if recurrent_type not in {"GRU", "LSTM"}:
+            raise ValueError("recurrent_type must be 'GRU' or 'LSTM'.")
+        if conv_channels <= 0 or hidden_size <= 0:
+            raise ValueError("conv_channels and hidden_size must be positive.")
+
+        self.recurrent_type = recurrent_type
+        self.conv = nn.Sequential(
+            nn.Conv1d(input_size, conv_channels, kernel_size=3, padding=1),
+            nn.GELU(),
+            nn.Dropout(dropout),
+        )
+        recurrent = nn.GRU if recurrent_type == "GRU" else nn.LSTM
+        self.recurrent = recurrent(
+            input_size=conv_channels,
+            hidden_size=hidden_size,
+            batch_first=True,
+        )
+        self.attention = nn.Sequential(
+            nn.Linear(hidden_size, hidden_size // 2 or 1),
+            nn.Tanh(),
+            nn.Linear(hidden_size // 2 or 1, 1, bias=False),
+        )
+        self.dropout = nn.Dropout(dropout)
+        self.fc = nn.Linear(hidden_size, 1)
+
+    def forward(self, x, return_attention=False):
+        convolved = self.conv(x.transpose(1, 2)).transpose(1, 2)
+        recurrent_outputs, _ = self.recurrent(convolved)
+        attention_weights = torch.softmax(self.attention(recurrent_outputs), dim=1)
+        context = torch.sum(attention_weights * recurrent_outputs, dim=1)
+        prediction = self.fc(self.dropout(context))
+        if return_attention:
+            return prediction, attention_weights.squeeze(-1)
+        return prediction
+
 
 if __name__ == "__main__":
     import torch

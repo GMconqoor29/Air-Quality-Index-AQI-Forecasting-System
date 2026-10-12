@@ -51,7 +51,7 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device,
                 raise optuna.exceptions.TrialPruned()
         
         if verbose:
-            print(f"Epoch {epoch:02d}: Train MSE {t_loss:.4f} | Val MSE {v_loss:.4f}")
+            print(f"Epoch {epoch:02d}: Train Loss {t_loss:.4f} | Val Loss {v_loss:.4f}")
 
         # Check Early Stopping
         if v_loss < best_val:

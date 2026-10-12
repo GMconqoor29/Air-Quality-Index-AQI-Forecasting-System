@@ -99,6 +99,21 @@ python "main program/run_gru.py"
 # Train and evaluate XGBoost (Lag Features, default params)
 python "main program/run_xgb.py"
 
+# Train an AQI >= 200 peak classifier and compare recall/alert-rate trade-offs
+python "main program/run_xgb_peak_classifier.py"
+
+# Compare AMSE baselines and train a soft-gated XGBoost/GRU/Stacked-LSTM ensemble
+python "main program/run_hybrid_ensemble.py"
+
+# Compare CNN-GRU and CNN-LSTM with temporal attention, trained with AMSE
+python "main program/run_cnn_recurrent_attention.py"
+
+# Walk-forward validation and two-stage peak classifier/regressor
+python "main program/run_walk_forward_two_stage.py"
+
+# Compare XGBoost, recurrent, soft-gated, and two-stage models with expanding-window CV
+python "main program/run_expanding_window_cv.py"
+
 # HPO + retrain: Tuned Base LSTM
 python "main program/tune_main.py"
 
@@ -129,6 +144,8 @@ Air-Quality-Index-AQI-Forecasting-System/
 │   ├── data_loader.py            # Data pipeline (+ get_xgboost_data)
 │   ├── model.py                  # LSTMAQIModel, StackedLSTMAQIModel, GRUAQIModel
 │   ├── train.py                  # Training loop with early stopping
+│   ├── hybrid_ensemble.py        # AQI-weighted AMSE and soft gating
+│   ├── time_series_cv.py         # Fold-local expanding-window data preparation
 │   ├── tune.py                   # Optuna objective functions
 │   ├── evaluate.py               # Metrics + persistence baseline
 │   ├── visualize.py              # Plotting utilities
@@ -138,6 +155,11 @@ Air-Quality-Index-AQI-Forecasting-System/
 │   ├── stacked_main.py           # Entry point: Stacked LSTM
 │   ├── run_gru.py                # Entry point: Single-layer GRU
 │   ├── run_xgb.py                # Entry point: XGBoost (Lag Features)
+│   ├── run_xgb_peak_classifier.py # Entry point: XGBoost AQI peak classifier
+│   ├── run_hybrid_ensemble.py    # AMSE baselines + soft-gated hybrid ensemble
+│   ├── run_cnn_recurrent_attention.py # Compare CNN-GRU/LSTM with temporal attention
+│   ├── run_walk_forward_two_stage.py # Walk-forward peak classifier + specialist regression
+│   ├── run_expanding_window_cv.py # Cross-validated comparison of principal forecasters
 │   ├── tune_main.py              # Entry point: HPO + train Tuned Base LSTM
 │   ├── tune_stacked_main.py      # Entry point: HPO + train Tuned Stacked LSTM
 │   ├── tune_xgb_main.py          # Entry point: HPO + train Tuned XGBoost
@@ -164,8 +186,8 @@ Air-Quality-Index-AQI-Forecasting-System/
 | Module | File | Function |
 |--------|------|----------|
 | **Configuration** | `src/config.py` | Defines all hyperparameters, feature columns, data split ratios, device, and random seed |
-| **Data Processing** | `src/data_loader.py` | Reads CSV, handles outliers (AQI > 400 → NaN), extracts time features (hour, month), interpolates, performs chronological split, scales using MinMaxScaler, creates sliding-window sequences, and creates PyTorch DataLoaders. Also supports `get_xgboost_data()` to return flattened arrays for XGBoost |
-| **Models** | `src/model.py` | Defines `LSTMAQIModel` (1-layer LSTM), `StackedLSTMAQIModel` (2-layer LSTM), `GRUAQIModel` (1-layer GRU): all following the RNN + Dropout + Linear(hidden→1) structure |
+| **Data Processing** | `src/data_loader.py` | Reads CSV, restores the hourly timeline, masks AQI outliers, splits chronologically, forward-fills at most one missing hour, fits MinMaxScaler on complete training rows, and creates sliding-window sequences. Also supports `get_xgboost_data()` to return flattened arrays and optional target timestamps for XGBoost |
+| **Models** | `src/model.py` | Defines base/stacked LSTM, GRU, and CNN-recurrent attention models (`CNNRecurrentAttentionAQIModel`) |
 | **Training** | `src/train.py` | Training loop with early stopping, checkpointing, and trial pruning support for Optuna |
 | **HPO Tuning** | `src/tune.py` | Objective functions for Optuna – samples lr, hidden_size, dropout, weight_decay; trains and returns best val loss |
 | **Evaluation** | `src/evaluate.py` | Calculates RMSE, MAE on unscaled data; calculates Naive Persistence Baseline |
@@ -214,21 +236,95 @@ Output: (N,)   ← forecasted AQI at t+6
 
 ```mermaid
 graph LR
-    A["Raw CSV<br/>30,335 rows × 21 cols"] --> B["Remove duplicates"]
-    B --> C["AQI > 400 → NaN<br/>(preserve timeline)"]
-    C --> D["Interpolate<br/>(time-based)"]
-    D --> E["Chronological Split<br/>70% / 10% / 20%"]
-    E --> F["MinMaxScaler<br/>(fit on Train only)"]
-    F --> G["Sliding Window<br/>W=48, H=6"]
-    G --> H["Train / Val / Test<br/>sequences"]
+    A["Raw CSVs<br/>19 source columns"] --> B["Sort and deduplicate"]
+    B --> C["Restore hourly grid<br/>30336 observed / 30360 slots"]
+    C --> D["Mask AQI > 400<br/>preserve missing labels"]
+    D --> E["Chronological split<br/>70% / 10% / 20%"]
+    E --> F["Causal forward-fill<br/>maximum 1 hour"]
+    F --> G["Fit scaler on complete<br/>training rows only"]
+    G --> H["48-hour windows<br/>target 6 hours ahead"]
+    H --> I["Train / Val / Test<br/>sequences"]
 ```
 
-Dataset used: Hanoi air-quality time-series dataset (08/2022 – 06/2025, 30,335 rows × 21 columns), including AQI, PM2.5, PM10, CO, NO₂, O₃, SO₂, temperature, humidity, wind speed, and pressure.
+Dataset used: Hanoi air-quality time series from 2022-01-13 00:00 through 2025-06-30 23:00. The CSVs contain 30,336 unique observed timestamps and 19 source columns; one 24-hour outage is restored as missing hourly slots during preprocessing. The model uses AQI, PM2.5, PM10, CO, NO₂, O₃, SO₂, temperature, humidity, wind speed, pressure, hour, and month.
 
 Processing principles:
-- Never break the timeline when handling outliers (use NaN + interpolation instead of deleting rows)
+- Restore missing hourly timestamps without interpolating measurements
+- Split chronologically before filling missing inputs; forward-fill at most one missing hourly sample from the prior observation
+- Keep longer outages missing and skip any 48-hour input windows containing missing readings
+- Do not impute missing AQI targets; exclude those forecast examples from training and evaluation
 - Avoid data leakage (fit the scaler only on the training set)
 - Split the data chronologically
+
+The existing tuned-XGBoost results are retained as a **legacy baseline**:
+the saved checkpoint and `results/tuned_xgb_results_20260717_075406.txt` are
+unchanged. On the original holdout, the model scored RMSE 39.6817 and MAE
+30.2843. At the report's high-peak cutoff (AQI >= 200), it detected 246 of
+993 peak forecasts (recall 0.2477), with 232 false alerts and peak MAE
+56.4342. This cutoff is for model evaluation only, not an official warning
+threshold. Those legacy metrics used the previous interpolation pipeline;
+models must be retrained with the causal pipeline before claiming comparable
+performance.
+
+`get_xgboost_data(..., include_target_timestamps=True)` provides target times
+for holdout evaluation. XGBoost evaluation reports peak-period RMSE/MAE,
+precision, recall, F1, missed peaks, false positives, and false forecast alerts
+per week. Keep the chronological test split untouched when selecting models or
+thresholds.
+
+The separate `run_xgb_peak_classifier.py` trains a class-weighted XGBoost
+classifier for whether the AQI six hours ahead will be at least 200. It selects
+candidate probability cutoffs on validation to reach several recall targets,
+then reports test recall, precision, F1, and false alerts per week at those
+same cutoffs. This exposes the recall/alert trade-off without selecting a
+threshold on the test set. Logs and the model are saved under `results/`.
+
+`run_hybrid_ensemble.py` compares AMSE-trained XGBoost, GRU, and stacked LSTM
+forecasts with standalone and equal-weight baselines. AMSE increases sample
+weights above the configured AQI peak threshold and penalizes under-forecasting
+more heavily. A softmax gate learns input-dependent blend weights from the
+chronological validation split; final performance is measured on the untouched
+test split. Logs, model checkpoints, and the fitted gate are saved under
+`results/`.
+
+`run_cnn_recurrent_attention.py` trains and compares both CNN-GRU and CNN-LSTM
+models. A temporal convolution extracts short-range patterns from the input
+window, the recurrent layer models sequential context, and learned attention
+weights pool the time steps before AQI regression. Both use the same AMSE loss,
+chronological split, early stopping, and test metrics as the hybrid experiment.
+Use the validation results for model selection; test results are for final
+comparison only.
+
+`run_walk_forward_two_stage.py` evaluates a peak classifier, a general AQI
+regressor, and a high-AQI specialist using four expanding-window folds over
+the pre-test timeline. It calibrates the peak-probability cutoff from pooled
+out-of-fold predictions to target 75% recall, refits on all pre-test data, and
+reports final metrics once on the untouched test split. The report includes
+overall and actual-peak-only errors, peak bias, recall, F1, precision, and
+false alerts per week.
+
+`run_expanding_window_cv.py` compares standard and AMSE XGBoost, AMSE GRU and
+stacked LSTM, their soft-gated ensemble, and the two-stage peak regressor across
+four expanding-window folds. Each fold fits its scaler on the training prefix,
+uses the first half of the following block for early stopping and calibration,
+and scores on the later half. The final test period is excluded from this
+comparison. Results are saved to `results/expanding_window_cv_results.txt`.
+
+Initial single-seed experiment:
+
+| Test model | Overall RMSE | Overall MAE | Actual-peak RMSE | Actual-peak MAE | Peak bias | Recall | Precision | False alerts/week |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| Soft-gated ensemble | 42.620 | 33.758 | 46.558 | 36.565 | -27.856 | 0.581 | 0.435 | — |
+| Two-stage (75% OOF recall cutoff) | 53.410 | 41.101 | 46.091 | 32.102 | -16.106 | 0.831 | 0.315 | 50.21 |
+
+The two-stage model improved peak-value MAE and recall in this run, but its
+lower precision and high false-alert rate came with substantially worse
+overall RMSE/MAE. This operating point is not automatically preferable; choose
+the cutoff based on an acceptable false-alert budget. The validation peak
+prevalence also varied sharply across rolling folds (14, 498, 112, and 66
+peaks per 2,950 samples), while the final test contained 996 peaks in 5,967
+samples. Treat these single-seed results as exploratory, not as a robust
+estimate under the observed prevalence shift.
 
 ---
 

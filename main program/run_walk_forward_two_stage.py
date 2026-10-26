@@ -26,7 +26,11 @@ RECALL_TARGETS = (0.50, 0.75, 0.90)
 
 
 def _raw_aqi(scaler, values):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = (
+        config.FEATURE_COLS.index(config.TARGET_COL)
+        if config.TARGET_COL in config.FEATURE_COLS
+        else 0
+    )
     return inverse_scale_predictions(scaler, np.asarray(values).reshape(-1, 1), target_idx)
 
 
@@ -160,9 +164,9 @@ def _report_classifier_metrics(name, labels, probabilities, timestamps, threshol
 
 
 def main():
-    os.makedirs("results", exist_ok=True)
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    with DualLogger(f"results/walk_forward_two_stage_{run_id}.txt"):
+    with DualLogger(os.path.join(config.RESULTS_DIR, f"walk_forward_two_stage_{run_id}.txt")):
         config.set_seed(config.RANDOM_SEED)
         (
             X_train,
@@ -184,11 +188,17 @@ def main():
         if not np.all(pretest_timestamps[:-1] <= pretest_timestamps[1:]):
             raise RuntimeError("Pre-test examples must be in chronological order.")
 
-        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
-        threshold_scaled = (
-            config.PEAK_AQI_THRESHOLD * scaler.scale_[target_idx]
-            + scaler.min_[target_idx]
-        )
+        if hasattr(scaler, "target_scaler_"):
+            threshold_scaled = (
+                config.PEAK_AQI_THRESHOLD * float(scaler.target_scaler_.scale_[0])
+                + float(scaler.target_scaler_.min_[0])
+            )
+        else:
+            target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            threshold_scaled = (
+                config.PEAK_AQI_THRESHOLD * float(scaler.scale_[target_idx])
+                + float(scaler.min_[target_idx])
+            )
         labels_pretest = _peak_labels(scaler, y_pretest)
         print(
             f"\nWalk-forward region: {pretest_timestamps[0]} through "
@@ -402,8 +412,8 @@ def main():
             ("general_regressor", final_general),
             ("peak_expert", final_expert),
         ):
-            model.save_model(f"results/two_stage_{model_name}_{run_id}.json")
-        print("Saved final two-stage models under results/.")
+            model.save_model(os.path.join(config.RESULTS_DIR, f"two_stage_{model_name}_{run_id}.json"))
+        print(f"Saved final two-stage models under {config.RESULTS_DIR}.")
 
 
 if __name__ == "__main__":

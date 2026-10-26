@@ -27,18 +27,31 @@ from src.model import LSTMAQIModel, StackedLSTMAQIModel, GRUAQIModel
 from src.train import train_model, evaluate_model
 from src.evaluate import inverse_scale_predictions
 
+import glob
+
+def find_checkpoint(pattern, fallback):
+    matches = glob.glob(os.path.join(config.RESULTS_DIR, pattern))
+    if matches:
+        return max(matches, key=os.path.getmtime)
+    if os.path.exists(fallback):
+        return fallback
+    fallback_pattern = glob.glob(os.path.join("results", pattern))
+    if fallback_pattern:
+        return max(fallback_pattern, key=os.path.getmtime)
+    return fallback
+
 # ── Checkpoint paths ──────────────────────────────────────────────────────────
 # Untuned (re-trained in-memory; saved here for reproducibility)
-BASE_LSTM_UNTUNED_PT    = "results/base_best_model.pt"
-STACKED_LSTM_UNTUNED_PT = "results/stacked_best_model.pt"
-GRU_UNTUNED_PT          = "results/gru_best_model.pt"
-XGB_UNTUNED_JSON        = "results/best_xgb_model_untuned.json"
+BASE_LSTM_UNTUNED_PT    = find_checkpoint("base_best_model.pt", "results/base_best_model.pt")
+STACKED_LSTM_UNTUNED_PT = find_checkpoint("stacked_best_model.pt", "results/stacked_best_model.pt")
+GRU_UNTUNED_PT          = find_checkpoint("gru_best_model.pt", "results/gru_best_model.pt")
+XGB_UNTUNED_JSON        = find_checkpoint("best_xgb_model_untuned.json", find_checkpoint("best_xgb_model.json", "results/best_xgb_model_untuned.json"))
 
 # Tuned
-BASE_LSTM_TUNED_PT      = "results/tuned_best_model_20260716_170213.pt"
-STACKED_LSTM_TUNED_PT   = "results/tuned_stacked_best_model_20260716_210810.pt"
-GRU_TUNED_PT            = "results/tuned_best_gru_20260716_231314.pt"
-XGB_TUNED_JSON          = "results/tuned_best_xgb_20260717_075406.json"
+BASE_LSTM_TUNED_PT      = find_checkpoint("tuned_best_model_*.pt", "results/tuned_best_model_20260716_170213.pt")
+STACKED_LSTM_TUNED_PT   = find_checkpoint("tuned_stacked_best_model_*.pt", "results/tuned_stacked_best_model_20260716_210810.pt")
+GRU_TUNED_PT            = find_checkpoint("tuned_best_gru_*.pt", "results/tuned_best_gru_20260716_231314.pt")
+XGB_TUNED_JSON          = find_checkpoint("tuned_best_xgb_*.json", "results/tuned_best_xgb_20260717_075406.json")
 
 # ── Untuned XGBoost default hyperparams (from run_xgb.py) ────────────────────
 XGB_DEFAULT_PARAMS = {
@@ -56,7 +69,7 @@ XGB_DEFAULT_PARAMS = {
 
 # ── Plot settings ─────────────────────────────────────────────────────────────
 NUM_SAMPLES = 200
-SAVE_PATH   = "results/tuned_vs_untuned_overlay.png"
+SAVE_PATH   = os.path.join(config.RESULTS_DIR, "tuned_vs_untuned_overlay.png")
 DPI         = 300
 
 # ── Colour scheme ─────────────────────────────────────────────────────────────
@@ -77,7 +90,7 @@ PANEL_COLORS = {
 def get_nn_predictions(model, loader, scaler):
     criterion = nn.MSELoss()
     _, preds, y_true = evaluate_model(model, loader, criterion, config.DEVICE)
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
     return (
         inverse_scale_predictions(scaler, preds,  target_idx),
         inverse_scale_predictions(scaler, y_true, target_idx),
@@ -91,6 +104,20 @@ def load_nn(model_obj, checkpoint_path):
     model_obj.to(config.DEVICE)
     model_obj.eval()
     return model_obj
+
+
+def load_checkpoint_model(model_cls, checkpoint_path, default_hidden=128, default_layers=2):
+    state = torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True)
+    hidden_size = state['fc.weight'].shape[1] if 'fc.weight' in state else default_hidden
+    kwargs = {"hidden_size": hidden_size, "dropout": 0.0}
+    if model_cls is StackedLSTMAQIModel:
+        layer_indices = [int(k.split('_l')[1]) for k in state.keys() if '_l' in k and 'weight_ih_l' in k]
+        kwargs["num_layers"] = max(layer_indices) + 1 if layer_indices else default_layers
+    model = model_cls(**kwargs)
+    model.load_state_dict(state)
+    model.to(config.DEVICE)
+    model.eval()
+    return model
 
 
 def train_and_save(model_obj, tr_ld, va_ld, checkpoint_path, patience=5):
@@ -128,7 +155,7 @@ def train_xgb_untuned(X_tr, y_tr, X_va, y_va):
 
 
 def xgb_predict(bst, X_te, scaler):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
     d = xgb.DMatrix(X_te)
     preds_scaled = bst.predict(d)
     return inverse_scale_predictions(scaler, preds_scaled.reshape(-1, 1), target_idx)
@@ -144,12 +171,12 @@ def main():
     tr_ld, va_ld, te_ld, scaler = get_dataloaders(data_dir="Dataset/archive")
     X_tr, y_tr, X_va, y_va, X_te, y_te, scaler_xgb = get_xgboost_data(data_dir="Dataset/archive")
 
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
 
     # ── 2a. Untuned Base LSTM ─────────────────────────────────────────────────
     if os.path.exists(BASE_LSTM_UNTUNED_PT):
         print("Loading cached untuned Base LSTM ...")
-        base_untuned = load_nn(LSTMAQIModel(), BASE_LSTM_UNTUNED_PT)
+        base_untuned = load_checkpoint_model(LSTMAQIModel, BASE_LSTM_UNTUNED_PT)
     else:
         print("Training untuned Base LSTM ...")
         set_seed(config.RANDOM_SEED)
@@ -161,23 +188,23 @@ def main():
 
     # ── 2b. Tuned Base LSTM ───────────────────────────────────────────────────
     print("Loading tuned Base LSTM ...")
-    base_tuned = load_nn(LSTMAQIModel(hidden_size=128, dropout=0.0), BASE_LSTM_TUNED_PT)
+    base_tuned = load_checkpoint_model(LSTMAQIModel, BASE_LSTM_TUNED_PT)
     pred_base_tuned, _ = get_nn_predictions(base_tuned, te_ld, scaler)
 
     # ── 3a. Untuned Stacked LSTM ──────────────────────────────────────────────
     print("Loading untuned Stacked LSTM ...")
-    stacked_untuned = load_nn(StackedLSTMAQIModel(hidden_size=128, dropout=0.0), STACKED_LSTM_UNTUNED_PT)
+    stacked_untuned = load_checkpoint_model(StackedLSTMAQIModel, STACKED_LSTM_UNTUNED_PT)
     pred_stacked_untuned, _ = get_nn_predictions(stacked_untuned, te_ld, scaler)
 
     # ── 3b. Tuned Stacked LSTM ────────────────────────────────────────────────
     print("Loading tuned Stacked LSTM ...")
-    stacked_tuned = load_nn(StackedLSTMAQIModel(hidden_size=256, num_layers=2, dropout=0.0), STACKED_LSTM_TUNED_PT)
+    stacked_tuned = load_checkpoint_model(StackedLSTMAQIModel, STACKED_LSTM_TUNED_PT)
     pred_stacked_tuned, _ = get_nn_predictions(stacked_tuned, te_ld, scaler)
 
     # ── 4a. Untuned GRU ───────────────────────────────────────────────────────
     if os.path.exists(GRU_UNTUNED_PT):
         print("Loading cached untuned GRU ...")
-        gru_untuned = load_nn(GRUAQIModel(hidden_size=128, dropout=0.0), GRU_UNTUNED_PT)
+        gru_untuned = load_checkpoint_model(GRUAQIModel, GRU_UNTUNED_PT)
     else:
         print("Training untuned GRU ...")
         set_seed(config.RANDOM_SEED)
@@ -189,7 +216,7 @@ def main():
 
     # ── 4b. Tuned GRU ─────────────────────────────────────────────────────────
     print("Loading tuned GRU ...")
-    gru_tuned = load_nn(GRUAQIModel(hidden_size=256, dropout=0.0), GRU_TUNED_PT)
+    gru_tuned = load_checkpoint_model(GRUAQIModel, GRU_TUNED_PT)
     pred_gru_tuned, _ = get_nn_predictions(gru_tuned, te_ld, scaler)
 
     # ── 5a. Untuned XGBoost ───────────────────────────────────────────────────

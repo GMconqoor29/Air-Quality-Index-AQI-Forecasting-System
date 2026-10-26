@@ -13,7 +13,7 @@ from src.utils import DualLogger
 
 def main():
     # Setup logger to save all prints to a text file
-    with DualLogger("results/base_results.txt") as logger:
+    with DualLogger(os.path.join(config.RESULTS_DIR, "base_results.txt")) as logger:
         # 1. Setup Configuration & Device
         config.set_seed(config.RANDOM_SEED)
         print(f"Using device: {config.DEVICE}")
@@ -38,17 +38,22 @@ def main():
             optimizer=optimizer, 
             device=config.DEVICE, 
             epochs=config.EPOCHS, 
-            patience=5
+            patience=5,
+            checkpoint_path=os.path.join(config.RESULTS_DIR, "base_best_model.pt")
         )
 
         from src.visualize import plot_loss_curve
-        plot_loss_curve(history, save_path="results/base_loss_curve.png")
+        plot_loss_curve(history, save_path=os.path.join(config.RESULTS_DIR, "base_loss_curve.png"))
 
         # 5. Evaluate Best Model
         print("\nEvaluating best model...")
         print_evaluation_metrics(model, tr_ld, criterion, config.DEVICE, scaler, prefix="Train")
         print_evaluation_metrics(model, va_ld, criterion, config.DEVICE, scaler, prefix="Val")
-        print_evaluation_metrics(model, te_ld, criterion, config.DEVICE, scaler, prefix="Base_Test", plot=True)
+        print_evaluation_metrics(
+            model, te_ld, criterion, config.DEVICE, scaler,
+            prefix="Base_Test", plot=True,
+            plot_save_path=os.path.join(config.RESULTS_DIR, "base_test_predictions.png")
+        )
         
         print("\n--- Naive Baseline Comparison ---")
         print_baseline_metrics(te_ld, scaler, prefix="Test")

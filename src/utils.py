@@ -10,6 +10,9 @@ class DualLogger(object):
     def __init__(self, filename="output.txt", mode="w"):
         self.terminal = sys.stdout
         self._closed = False
+        dirname = os.path.dirname(filename)
+        if dirname:
+            os.makedirs(dirname, exist_ok=True)
         self.log = open(filename, mode, encoding="utf-8")
         self.write(f"\n{'='*50}\n--- Log Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')} ---\n{'='*50}\n")
 

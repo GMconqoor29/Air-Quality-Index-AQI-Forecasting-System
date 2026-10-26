@@ -1,4 +1,6 @@
+import os
 import numpy as np
+import pandas as pd
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 import src.config as config
 from src.train import evaluate_model
@@ -95,16 +97,17 @@ def print_peak_metrics(actual, predicted, threshold, timestamps=None, prefix="Te
 
 def inverse_scale_predictions(scaler, preds, target_idx=0):
     """
-    Because the scaler was fit on all 13 features, we must reconstruct 
-    a dummy array of shape (N, 13) to use inverse_transform.
+    Reconstruct a dummy array with all configured features for inverse_transform.
     """
+    if hasattr(scaler, "target_scaler_"):
+        return scaler.target_scaler_.inverse_transform(np.asarray(preds).reshape(-1, 1)).flatten()
     dummy = np.zeros((len(preds), len(config.FEATURE_COLS)))
-    dummy[:, target_idx] = preds.flatten()
+    dummy[:, target_idx] = np.asarray(preds).flatten()
     inv_dummy = scaler.inverse_transform(dummy)
     return inv_dummy[:, target_idx]
 
 def print_evaluation_metrics(model, loader, criterion, device, scaler, prefix="Test", plot=False, plot_save_path=None):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
     
     # Get scaled predictions
     loss, preds, y_true = evaluate_model(model, loader, criterion, device)
@@ -125,7 +128,7 @@ def print_evaluation_metrics(model, loader, criterion, device, scaler, prefix="T
     if plot:
         from src.visualize import plot_predictions
         if plot_save_path is None:
-            plot_save_path = f"results/{prefix.lower()}_predictions.png"
+            plot_save_path = os.path.join(config.RESULTS_DIR, f"{prefix.lower()}_predictions.png")
         plot_predictions(
             y_true_unscaled, 
             preds_unscaled, 
@@ -135,32 +138,47 @@ def print_evaluation_metrics(model, loader, criterion, device, scaler, prefix="T
     
     return loss, rmse, mae
 
-def print_baseline_metrics(loader, scaler, prefix="Test"):
+def print_baseline_metrics(loader, scaler, prefix="Test", data_dir='Dataset/archive'):
     """
-    Calculates the Persistence Baseline: "The AQI at t+6 will be exactly the AQI at time t."
+    Calculates the Persistence Baseline: "the AQI at the last observed hour (t)
+    will persist to the target hour (t + HORIZON)".
     """
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
-    all_naive, all_y = [], []
-    
-    for X, y in loader:
-        # X shape is (batch, window, features). We want the last timestep's AQI.
-        naive_pred = X[:, -1, target_idx].numpy()
-        all_naive.append(naive_pred)
-        all_y.append(y.numpy())
-        
-    preds = np.concatenate(all_naive).reshape(-1, 1)
-    y_true = np.concatenate(all_y).reshape(-1, 1)
-    
-    preds_unscaled = inverse_scale_predictions(scaler, preds, target_idx)
-    y_true_unscaled = inverse_scale_predictions(scaler, y_true, target_idx)
-    
+    if config.TARGET_COL in config.FEATURE_COLS:
+        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+        all_naive, all_y = [], []
+
+        for X, y in loader:
+            # X shape is (batch, window, features). We want the last timestep's AQI.
+            naive_pred = X[:, -1, target_idx].numpy()
+            all_naive.append(naive_pred)
+            all_y.append(y.numpy())
+
+        preds = np.concatenate(all_naive).reshape(-1, 1)
+        y_true = np.concatenate(all_y).reshape(-1, 1)
+
+        preds_unscaled = inverse_scale_predictions(scaler, preds, target_idx)
+        y_true_unscaled = inverse_scale_predictions(scaler, y_true, target_idx)
+    else:
+        # Target not in features: reconstruct the last-known AQI directly from the
+        # raw series (AQI at target_timestamp - HORIZON), aligned with the test targets.
+        from src.data_loader import get_test_target_timestamps, load_raw_aqi_series
+
+        aqi = load_raw_aqi_series(data_dir)
+        test_timestamps = get_test_target_timestamps(data_dir)
+        past_times = pd.DatetimeIndex(test_timestamps) - pd.Timedelta(hours=config.HORIZON)
+        persistence = aqi.reindex(past_times).ffill().bfill().to_numpy(dtype=np.float64)
+
+        y_true_scaled = np.concatenate([y.numpy() for _, y in loader])
+        y_true_unscaled = inverse_scale_predictions(scaler, y_true_scaled, 0).reshape(-1, 1)
+        preds_unscaled = persistence.reshape(-1, 1)
+
     mse = mean_squared_error(y_true_unscaled, preds_unscaled)
     rmse = np.sqrt(mse)
     mae = mean_absolute_error(y_true_unscaled, preds_unscaled)
-    
+
     print(f"{prefix} BASELINE (Persistence) Unscaled RMSE: {rmse:.4f}")
     print(f"{prefix} BASELINE (Persistence) Unscaled MAE:  {mae:.4f}")
-    
+
     return rmse, mae
 
 def print_xgb_evaluation_metrics(
@@ -174,7 +192,7 @@ def print_xgb_evaluation_metrics(
     timestamps=None,
     peak_threshold=config.PEAK_AQI_THRESHOLD,
 ):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
     
     # Get scaled predictions
     preds = bst.predict(dmatrix)
@@ -203,7 +221,7 @@ def print_xgb_evaluation_metrics(
     if plot:
         from src.visualize import plot_predictions
         if plot_save_path is None:
-            plot_save_path = f"results/{prefix.lower()}_predictions.png"
+            plot_save_path = os.path.join(config.RESULTS_DIR, f"{prefix.lower()}_predictions.png")
         plot_predictions(
             y_true_unscaled, 
             preds_unscaled, 

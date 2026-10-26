@@ -13,7 +13,7 @@ from src.utils import DualLogger
 
 def main():
     # Setup logger to save all prints to a text file
-    with DualLogger("results/stacked_results.txt") as logger:
+    with DualLogger(os.path.join(config.RESULTS_DIR, "stacked_results.txt")) as logger:
         # 1. Setup Configuration & Device
         config.set_seed(config.RANDOM_SEED)
         print(f"Using device: {config.DEVICE}")
@@ -39,17 +39,21 @@ def main():
             device=config.DEVICE, 
             epochs=config.EPOCHS, 
             patience=5,
-            checkpoint_path="results/stacked_best_model.pt"
+            checkpoint_path=os.path.join(config.RESULTS_DIR, "stacked_best_model.pt")
         )
 
         from src.visualize import plot_loss_curve
-        plot_loss_curve(history, save_path="results/stacked_loss_curve.png")
+        plot_loss_curve(history, save_path=os.path.join(config.RESULTS_DIR, "stacked_loss_curve.png"))
 
         # 5. Evaluate Best Model
         print("\nEvaluating best model...")
         print_evaluation_metrics(model, tr_ld, criterion, config.DEVICE, scaler, prefix="Train")
         print_evaluation_metrics(model, va_ld, criterion, config.DEVICE, scaler, prefix="Val")
-        print_evaluation_metrics(model, te_ld, criterion, config.DEVICE, scaler, prefix="Stacked_Test", plot=True, plot_save_path="results/stacked_test_predictions.png")
+        print_evaluation_metrics(
+            model, te_ld, criterion, config.DEVICE, scaler,
+            prefix="Stacked_Test", plot=True,
+            plot_save_path=os.path.join(config.RESULTS_DIR, "stacked_test_predictions.png")
+        )
         
         print("\n--- Naive Baseline Comparison ---")
         print_baseline_metrics(te_ld, scaler, prefix="Test")

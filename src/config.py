@@ -13,7 +13,7 @@ BASELINE_FEATURE_COLS = [
 ]
 _DEFAULT_FEATURE_COLS = [
     "PM25", "PM10", "Temperature", "Relative Humidity", "Pressure",
-    "hour", "month", "AQI",
+    "hour", "month",
 ]
 _ENV_FEATURES = os.getenv("FEATURE_COLS")
 if _ENV_FEATURES:

@@ -29,29 +29,33 @@ from src.evaluate import inverse_scale_predictions
 
 import glob
 
-def find_checkpoint(pattern, fallback):
-    matches = glob.glob(os.path.join(config.RESULTS_DIR, pattern))
-    if matches:
+def find_checkpoint(pattern):
+    """Resolve a checkpoint path under RESULTS_DIR.
+
+    Wildcard patterns glob for the newest matching file; literal filenames
+    return a path that may not exist yet (so callers can train it on demand).
+    """
+    if any(ch in pattern for ch in "*?["):
+        matches = glob.glob(os.path.join(config.RESULTS_DIR, pattern))
+        if not matches:
+            raise FileNotFoundError(
+                f"No checkpoint matching {pattern!r} found in {config.RESULTS_DIR}."
+            )
         return max(matches, key=os.path.getmtime)
-    if os.path.exists(fallback):
-        return fallback
-    fallback_pattern = glob.glob(os.path.join("results", pattern))
-    if fallback_pattern:
-        return max(fallback_pattern, key=os.path.getmtime)
-    return fallback
+    return os.path.join(config.RESULTS_DIR, pattern)
 
 # ── Checkpoint paths ──────────────────────────────────────────────────────────
 # Untuned (re-trained in-memory; saved here for reproducibility)
-BASE_LSTM_UNTUNED_PT    = find_checkpoint("base_best_model.pt", "results/base_best_model.pt")
-STACKED_LSTM_UNTUNED_PT = find_checkpoint("stacked_best_model.pt", "results/stacked_best_model.pt")
-GRU_UNTUNED_PT          = find_checkpoint("gru_best_model.pt", "results/gru_best_model.pt")
-XGB_UNTUNED_JSON        = find_checkpoint("best_xgb_model_untuned.json", find_checkpoint("best_xgb_model.json", "results/best_xgb_model_untuned.json"))
+BASE_LSTM_UNTUNED_PT    = find_checkpoint("base_best_model.pt")
+STACKED_LSTM_UNTUNED_PT = find_checkpoint("stacked_best_model.pt")
+GRU_UNTUNED_PT          = find_checkpoint("gru_best_model.pt")
+XGB_UNTUNED_JSON        = find_checkpoint("best_xgb_model.json")
 
 # Tuned
-BASE_LSTM_TUNED_PT      = find_checkpoint("tuned_best_model_*.pt", "results/tuned_best_model_20260716_170213.pt")
-STACKED_LSTM_TUNED_PT   = find_checkpoint("tuned_stacked_best_model_*.pt", "results/tuned_stacked_best_model_20260716_210810.pt")
-GRU_TUNED_PT            = find_checkpoint("tuned_best_gru_*.pt", "results/tuned_best_gru_20260716_231314.pt")
-XGB_TUNED_JSON          = find_checkpoint("tuned_best_xgb_*.json", "results/tuned_best_xgb_20260717_075406.json")
+BASE_LSTM_TUNED_PT      = find_checkpoint("tuned_best_model_*.pt")
+STACKED_LSTM_TUNED_PT   = find_checkpoint("tuned_stacked_best_model_*.pt")
+GRU_TUNED_PT            = find_checkpoint("tuned_best_gru_*.pt")
+XGB_TUNED_JSON          = find_checkpoint("tuned_best_xgb_*.json")
 
 # ── Untuned XGBoost default hyperparams (from run_xgb.py) ────────────────────
 XGB_DEFAULT_PARAMS = {

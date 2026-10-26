@@ -24,7 +24,7 @@ class CausalPreprocessingTests(unittest.TestCase):
             config.FEATURE_COLS,
             [
                 "PM25", "PM10", "Temperature", "Relative Humidity", "Pressure",
-                "hour", "month", "AQI",
+                "hour", "month",
             ],
         )
         self.assertEqual(

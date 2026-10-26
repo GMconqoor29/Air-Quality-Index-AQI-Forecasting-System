@@ -75,9 +75,7 @@ def main():
         
         model_path = os.path.join(config.RESULTS_DIR, 'best_xgb_model.json')
         bst.save_model(model_path)
-        untuned_path = os.path.join(config.RESULTS_DIR, 'best_xgb_model_untuned.json')
-        bst.save_model(untuned_path)
-        print(f"\nSaved {model_path} and {untuned_path}!")
+        print(f"\nSaved {model_path}!")
 
 if __name__ == "__main__":
     main()

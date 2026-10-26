@@ -28,7 +28,11 @@ def collect_predictions(model, loader, device):
 
 
 def report_metrics(name, predictions, targets, scaler, timestamps):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = (
+        config.FEATURE_COLS.index(config.TARGET_COL)
+        if config.TARGET_COL in config.FEATURE_COLS
+        else 0
+    )
     predictions = inverse_scale_predictions(
         scaler, np.asarray(predictions).reshape(-1, 1), target_idx
     )
@@ -38,7 +42,12 @@ def report_metrics(name, predictions, targets, scaler, timestamps):
     rmse = float(np.sqrt(mean_squared_error(targets, predictions)))
     mae = float(mean_absolute_error(targets, predictions))
     threshold = config.PEAK_AQI_THRESHOLD
-    severity_span = max(float(scaler.data_max_[target_idx] - threshold), 1e-6)
+    target_max = (
+        float(scaler.target_scaler_.data_max_[0])
+        if hasattr(scaler, "target_scaler_")
+        else float(scaler.data_max_[target_idx])
+    )
+    severity_span = max(float(target_max - threshold), 1e-6)
     weights = calculate_sample_weights(targets, threshold, severity_span)
     weights *= np.where(predictions < targets, 3.0, 1.0)
     amse = float(np.mean(weights * np.square(predictions - targets)))
@@ -52,11 +61,10 @@ def report_metrics(name, predictions, targets, scaler, timestamps):
 
 
 def main():
-    os.makedirs("results", exist_ok=True)
-    with DualLogger("results/cnn_recurrent_attention_results.txt"):
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
+    with DualLogger(os.path.join(config.RESULTS_DIR, "cnn_recurrent_attention_results.txt")):
         config.set_seed(config.RANDOM_SEED)
         device = config.DEVICE
-        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
         train_loader, val_loader, test_loader, scaler = get_dataloaders(
             data_dir="Dataset/archive"
         )
@@ -79,14 +87,24 @@ def main():
         ):
             raise RuntimeError("Neural and XGBoost splits produced different scalers.")
 
+        if hasattr(scaler, "target_scaler_"):
+            target_scale = float(scaler.target_scaler_.scale_[0])
+            target_min = float(scaler.target_scaler_.min_[0])
+            target_max = float(scaler.target_scaler_.data_max_[0])
+        else:
+            target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            target_scale = float(scaler.scale_[target_idx])
+            target_min = float(scaler.min_[target_idx])
+            target_max = float(scaler.data_max_[target_idx])
+
         threshold = (
-            config.PEAK_AQI_THRESHOLD * scaler.scale_[target_idx]
-            + scaler.min_[target_idx]
+            config.PEAK_AQI_THRESHOLD * target_scale
+            + target_min
         )
         severity_span = max(
             float(
-                (scaler.data_max_[target_idx] - config.PEAK_AQI_THRESHOLD)
-                * scaler.scale_[target_idx]
+                (target_max - config.PEAK_AQI_THRESHOLD)
+                * target_scale
             ),
             1e-6,
         )
@@ -116,8 +134,9 @@ def main():
                 device=device,
                 epochs=config.EPOCHS,
                 patience=10,
-                checkpoint_path=(
-                    f"results/cnn_{recurrent_type.lower()}_attention_best.pt"
+                checkpoint_path=os.path.join(
+                    config.RESULTS_DIR,
+                    f"cnn_{recurrent_type.lower()}_attention_best.pt"
                 ),
             )
             trained_models[model_name] = model
@@ -133,9 +152,22 @@ def main():
         if not np.allclose(y_val_neural, y_val):
             raise RuntimeError("Neural and XGBoost validation labels are not aligned.")
 
-        persistence = X_test.reshape(
-            -1, config.WINDOW_SIZE, len(config.FEATURE_COLS)
-        )[:, -1, target_idx]
+        if config.TARGET_COL in config.FEATURE_COLS:
+            target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            persistence = X_test.reshape(
+                -1, config.WINDOW_SIZE, len(config.FEATURE_COLS)
+            )[:, -1, target_idx]
+        else:
+            import glob
+            import pandas as pd
+            df_raw = pd.concat([pd.read_csv(f) for f in sorted(glob.glob('Dataset/archive/*.csv'))], ignore_index=True)
+            df_raw['Local Time'] = pd.to_datetime(df_raw['Local Time'])
+            df_raw = df_raw.sort_values('Local Time').drop_duplicates('Local Time').set_index('Local Time').asfreq('h')
+            df_raw.loc[df_raw['AQI'] > 400, 'AQI'] = np.nan
+            past_times = pd.DatetimeIndex(test_timestamps) - pd.Timedelta(hours=config.HORIZON)
+            persist_raw = df_raw.reindex(past_times)['AQI'].ffill().bfill().to_numpy(dtype=np.float64)
+            persistence = scaler.target_scaler_.transform(persist_raw.reshape(-1, 1)).reshape(-1)
+
         print("\nTest comparison (same chronological holdout and AMSE definition):")
         report_metrics("Persistence", persistence, y_test, scaler, test_timestamps)
         for name, model in trained_models.items():

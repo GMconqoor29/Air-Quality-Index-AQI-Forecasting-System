@@ -16,7 +16,7 @@ from src.utils import DualLogger
 
 def main():
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    with DualLogger(f"results/tuned_stacked_results_{run_id}.txt") as logger:
+    with DualLogger(os.path.join(config.RESULTS_DIR, f"tuned_stacked_results_{run_id}.txt")) as logger:
         config.set_seed(config.RANDOM_SEED)
         print("Loading data for stacked tuning...")
         tr_ld, va_ld, te_ld, scaler = get_dataloaders(data_dir='Dataset/archive')
@@ -68,21 +68,25 @@ def main():
             device=config.DEVICE, 
             epochs=config.EPOCHS, 
             patience=10,
-            checkpoint_path=f'results/tuned_stacked_best_model_{run_id}.pt'
+            checkpoint_path=os.path.join(config.RESULTS_DIR, f'tuned_stacked_best_model_{run_id}.pt')
         )
         
         from src.visualize import plot_loss_curve
-        plot_loss_curve(history, save_path=f"results/tuned_stacked_loss_curve_{run_id}.png")
+        plot_loss_curve(history, save_path=os.path.join(config.RESULTS_DIR, f"tuned_stacked_loss_curve_{run_id}.png"))
         
         print("\nEvaluating Best Tuned Stacked Model...")
         print_evaluation_metrics(model, tr_ld, criterion, config.DEVICE, scaler, prefix="Train")
         print_evaluation_metrics(model, va_ld, criterion, config.DEVICE, scaler, prefix="Val")
-        print_evaluation_metrics(model, te_ld, criterion, config.DEVICE, scaler, prefix="Tuned_Stacked_Test", plot=True, plot_save_path=f"results/tuned_stacked_test_predictions_{run_id}.png")
+        print_evaluation_metrics(
+            model, te_ld, criterion, config.DEVICE, scaler,
+            prefix="Tuned_Stacked_Test", plot=True,
+            plot_save_path=os.path.join(config.RESULTS_DIR, f"tuned_stacked_test_predictions_{run_id}.png")
+        )
         
         print("\n--- Naive Baseline Comparison ---")
         print_baseline_metrics(te_ld, scaler, prefix="Test")
         
-        print(f"\nSaved results/tuned_stacked_best_model_{run_id}.pt!")
+        print(f"\nSaved {os.path.join(config.RESULTS_DIR, f'tuned_stacked_best_model_{run_id}.pt')}!")
 
 if __name__ == "__main__":
     main()

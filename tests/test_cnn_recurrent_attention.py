@@ -2,12 +2,13 @@ import unittest
 
 import torch
 
+from src import config
 from src.model import CNNRecurrentAttentionAQIModel
 
 
 class CNNRecurrentAttentionTests(unittest.TestCase):
     def test_cnn_gru_and_cnn_lstm_return_forecast_and_normalized_attention(self):
-        features = torch.randn(4, 48, 13)
+        features = torch.randn(4, config.WINDOW_SIZE, len(config.FEATURE_COLS))
         for recurrent_type in ("GRU", "LSTM"):
             with self.subTest(recurrent_type=recurrent_type):
                 model = CNNRecurrentAttentionAQIModel(

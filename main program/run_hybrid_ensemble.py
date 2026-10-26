@@ -36,7 +36,11 @@ def _collect_model_predictions(model, loader, device):
 
 
 def _evaluate_forecast(name, scaled_predictions, scaled_targets, scaler, timestamps):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = (
+        config.FEATURE_COLS.index(config.TARGET_COL)
+        if config.TARGET_COL in config.FEATURE_COLS
+        else 0
+    )
     predictions = inverse_scale_predictions(
         scaler, np.asarray(scaled_predictions).reshape(-1, 1), target_idx
     )
@@ -46,7 +50,12 @@ def _evaluate_forecast(name, scaled_predictions, scaled_targets, scaler, timesta
     rmse = float(np.sqrt(mean_squared_error(targets, predictions)))
     mae = float(mean_absolute_error(targets, predictions))
     threshold = config.PEAK_AQI_THRESHOLD
-    severity_span = max(float(scaler.data_max_[target_idx] - threshold), 1e-6)
+    target_max = (
+        float(scaler.target_scaler_.data_max_[0])
+        if hasattr(scaler, "target_scaler_")
+        else float(scaler.data_max_[target_idx])
+    )
+    severity_span = max(float(target_max - threshold), 1e-6)
     weights = calculate_sample_weights(targets, threshold, severity_span)
     weights *= np.where(predictions < targets, 3.0, 1.0)
     amse = float(np.mean(weights * np.square(predictions - targets)))
@@ -62,12 +71,10 @@ def _evaluate_forecast(name, scaled_predictions, scaled_targets, scaler, timesta
 
 
 def main():
-    os.makedirs("results", exist_ok=True)
-    with DualLogger("results/hybrid_ensemble_results.txt"):
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
+    with DualLogger(os.path.join(config.RESULTS_DIR, "hybrid_ensemble_results.txt")):
         config.set_seed(config.RANDOM_SEED)
         device = config.DEVICE
-        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
-        target_scale = target_idx
 
         train_loader, val_loader, test_loader, scaler = get_dataloaders(
             data_dir="Dataset/archive"
@@ -91,9 +98,19 @@ def main():
         ):
             raise RuntimeError("Neural and XGBoost splits produced different scalers.")
 
-        threshold = config.PEAK_AQI_THRESHOLD * scaler.scale_[target_scale] + scaler.min_[target_scale]
+        if hasattr(scaler, "target_scaler_"):
+            target_scale = float(scaler.target_scaler_.scale_[0])
+            target_min = float(scaler.target_scaler_.min_[0])
+            target_max = float(scaler.target_scaler_.data_max_[0])
+        else:
+            target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            target_scale = float(scaler.scale_[target_idx])
+            target_min = float(scaler.min_[target_idx])
+            target_max = float(scaler.data_max_[target_idx])
+
+        threshold = config.PEAK_AQI_THRESHOLD * target_scale + target_min
         severity_span = max(
-            float((scaler.data_max_[target_scale] - config.PEAK_AQI_THRESHOLD) * scaler.scale_[target_scale]),
+            float((target_max - config.PEAK_AQI_THRESHOLD) * target_scale),
             1e-6,
         )
         criterion = AsymmetricWeightedMSE(
@@ -151,7 +168,7 @@ def main():
                 device=device,
                 epochs=config.EPOCHS,
                 patience=10,
-                checkpoint_path=f"results/{name.lower()}_amse_best.pt",
+                checkpoint_path=os.path.join(config.RESULTS_DIR, f"{name.lower()}_amse_best.pt"),
             )
             models[name] = model
             rnn_predictions[name] = {
@@ -174,13 +191,18 @@ def main():
         if not np.allclose(y_val_neural, y_val) or not np.allclose(y_test_neural, y_test):
             raise RuntimeError("Neural and XGBoost labels are not aligned.")
 
+        context_idx = (
+            config.FEATURE_COLS.index(config.TARGET_COL)
+            if config.TARGET_COL in config.FEATURE_COLS
+            else (config.FEATURE_COLS.index("PM25") if "PM25" in config.FEATURE_COLS else 0)
+        )
         val_context = make_gating_context(
             X_val.reshape(-1, config.WINDOW_SIZE, len(config.FEATURE_COLS)),
-            target_idx,
+            context_idx,
         )
         test_context = make_gating_context(
             X_test.reshape(-1, config.WINDOW_SIZE, len(config.FEATURE_COLS)),
-            target_idx,
+            context_idx,
         )
         gate = fit_soft_gate(
             predictions_by_split["val"],
@@ -198,17 +220,30 @@ def main():
             {
                 "state_dict": gate.state_dict(),
                 "model_names": ["XGBoost", "GRU", "Stacked_LSTM"],
-                "target_index": target_idx,
+                "target_index": context_idx,
             },
-            "results/hybrid_soft_gate.pt",
+            os.path.join(config.RESULTS_DIR, "hybrid_soft_gate.pt"),
         )
-        booster.save_model("results/hybrid_xgb.json")
+        booster.save_model(os.path.join(config.RESULTS_DIR, "hybrid_xgb.json"))
 
         print("\nTest comparison (AMSE: higher penalty for under-forecasting and high AQI):")
         test_predictions = predictions_by_split["test"]
-        persistence = X_test.reshape(
-            -1, config.WINDOW_SIZE, len(config.FEATURE_COLS)
-        )[:, -1, target_idx]
+        if config.TARGET_COL in config.FEATURE_COLS:
+            target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            persistence = X_test.reshape(
+                -1, config.WINDOW_SIZE, len(config.FEATURE_COLS)
+            )[:, -1, target_idx]
+        else:
+            import glob
+            import pandas as pd
+            df_raw = pd.concat([pd.read_csv(f) for f in sorted(glob.glob('Dataset/archive/*.csv'))], ignore_index=True)
+            df_raw['Local Time'] = pd.to_datetime(df_raw['Local Time'])
+            df_raw = df_raw.sort_values('Local Time').drop_duplicates('Local Time').set_index('Local Time').asfreq('h')
+            df_raw.loc[df_raw['AQI'] > 400, 'AQI'] = np.nan
+            past_times = pd.DatetimeIndex(test_timestamps) - pd.Timedelta(hours=config.HORIZON)
+            persist_raw = df_raw.reindex(past_times)['AQI'].ffill().bfill().to_numpy(dtype=np.float64)
+            persistence = scaler.target_scaler_.transform(persist_raw.reshape(-1, 1)).reshape(-1)
+
         _evaluate_forecast("Persistence", persistence, y_test, scaler, test_timestamps)
         _evaluate_forecast(
             "XGBoost (weighted)", test_predictions[:, 0], y_test, scaler, test_timestamps

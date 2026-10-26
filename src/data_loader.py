@@ -107,7 +107,10 @@ def load_and_preprocess_data(data_dir='Dataset/archive'):
     timestamps = pd.DatetimeIndex(df.index)
     df['hour'] = timestamps.hour
     df['month'] = timestamps.month
-    return df.reset_index()[[config.TIME_COL] + config.FEATURE_COLS]
+    columns_to_keep = [config.TIME_COL] + [c for c in config.FEATURE_COLS]
+    if config.TARGET_COL not in columns_to_keep:
+        columns_to_keep.append(config.TARGET_COL)
+    return df.reset_index()[columns_to_keep]
 
 
 def _split_and_forward_fill_features(df):
@@ -151,13 +154,16 @@ def _split_and_forward_fill_features(df):
 def _scale_target_values(values, scaler, target_idx):
     scaled = np.full(values.shape, np.nan, dtype=np.float64)
     valid = np.isfinite(values)
-    scaled[valid] = (
-        values[valid] * scaler.scale_[target_idx] + scaler.min_[target_idx]
-    )
+    if hasattr(scaler, "target_scaler_"):
+        scaled[valid] = scaler.target_scaler_.transform(values[valid].reshape(-1, 1)).flatten()
+    else:
+        scaled[valid] = (
+            values[valid] * scaler.scale_[target_idx] + scaler.min_[target_idx]
+        )
     return scaled
 
 
-def _get_scaled_sequence_splits(data_dir):
+def _get_scaled_sequence_splits(data_dir, verbose=True):
     df = load_and_preprocess_data(data_dir)
     raw_splits = _split_and_forward_fill_features(df)
     train, val, test = raw_splits
@@ -167,7 +173,17 @@ def _get_scaled_sequence_splits(data_dir):
     if not complete_train_rows.any():
         raise ValueError("The training period has no complete feature rows.")
     scaler.fit(train[0][complete_train_rows])
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+
+    if config.TARGET_COL in config.FEATURE_COLS:
+        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    else:
+        target_scaler = MinMaxScaler()
+        valid_targets = np.isfinite(train[1])
+        if not valid_targets.any():
+            raise ValueError("The training period has no valid target values.")
+        target_scaler.fit(train[1][valid_targets].reshape(-1, 1))
+        scaler.target_scaler_ = target_scaler
+        target_idx = 0
 
     sequence_splits = []
     for features, targets, timestamps in raw_splits:
@@ -183,20 +199,33 @@ def _get_scaled_sequence_splits(data_dir):
         )
         sequence_splits.append((X, y, timestamps[target_indices]))
 
-    print(
-        f"Data Split -> Train: {len(train[0])} | Val: {len(val[0])} "
-        f"| Test: {len(test[0])}"
-    )
-    print(
-        "Sequences -> "
-        + " | ".join(
-            f"{name}: {X.shape}"
-            for name, (X, _, _) in zip(
-                ("Train", "Val", "Test"), sequence_splits
+    if verbose:
+        print(
+            f"Data Split -> Train: {len(train[0])} | Val: {len(val[0])} "
+            f"| Test: {len(test[0])}"
+        )
+        print(
+            "Sequences -> "
+            + " | ".join(
+                f"{name}: {X.shape}"
+                for name, (X, _, _) in zip(
+                    ("Train", "Val", "Test"), sequence_splits
+                )
             )
         )
-    )
     return sequence_splits, scaler
+
+
+def load_raw_aqi_series(data_dir='Dataset/archive'):
+    """Return the raw AQI series on the hourly grid (AQI > 400 masked as NaN)."""
+    df = load_and_preprocess_data(data_dir)
+    return df.set_index(config.TIME_COL)[config.TARGET_COL]
+
+
+def get_test_target_timestamps(data_dir='Dataset/archive'):
+    """Return the timestamps of the chronological test targets (no extra logging)."""
+    sequence_splits, _ = _get_scaled_sequence_splits(data_dir, verbose=False)
+    return sequence_splits[2][2]
 
 def get_dataloaders(data_dir='Dataset/archive'):
     sequence_splits, scaler = _get_scaled_sequence_splits(data_dir)

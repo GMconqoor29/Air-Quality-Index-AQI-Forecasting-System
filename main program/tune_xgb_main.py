@@ -15,7 +15,7 @@ from src.utils import DualLogger
 
 def main():
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    with DualLogger(f"results/tuned_xgb_results_{run_id}.txt") as logger:
+    with DualLogger(os.path.join(config.RESULTS_DIR, f"tuned_xgb_results_{run_id}.txt")) as logger:
         config.set_seed(config.RANDOM_SEED)
         print("Loading data for XGBoost tuning...")
         (
@@ -80,7 +80,7 @@ def main():
             scaler,
             prefix="Test",
             plot=True,
-            plot_save_path=f"results/tuned_xgb_test_predictions_{run_id}.png",
+            plot_save_path=os.path.join(config.RESULTS_DIR, f"tuned_xgb_test_predictions_{run_id}.png"),
             timestamps=test_timestamps,
         )
         
@@ -88,7 +88,7 @@ def main():
         _, _, te_ld, _ = get_dataloaders(data_dir='Dataset/archive')
         print_baseline_metrics(te_ld, scaler, prefix="Test")
         
-        model_path = f'results/tuned_best_xgb_{run_id}.json'
+        model_path = os.path.join(config.RESULTS_DIR, f'tuned_best_xgb_{run_id}.json')
         bst.save_model(model_path)
         print(f"\nSaved {model_path}!")
 

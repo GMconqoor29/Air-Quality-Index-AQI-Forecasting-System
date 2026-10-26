@@ -39,7 +39,11 @@ PEAK_THRESHOLD = config.PEAK_AQI_THRESHOLD
 
 
 def _inverse_targets(values, scaler):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = (
+        config.FEATURE_COLS.index(config.TARGET_COL)
+        if config.TARGET_COL in config.FEATURE_COLS
+        else 0
+    )
     return inverse_scale_predictions(scaler, np.asarray(values).reshape(-1, 1), target_idx).ravel()
 
 
@@ -98,10 +102,19 @@ def _boost_predictions(model, features):
 
 
 def _train_peak_models(X_train, y_train, X_cal, y_cal, scaler, seed):
+    if hasattr(scaler, "target_scaler_"):
+        target_scale = float(scaler.target_scaler_.scale_[0])
+        target_min = float(scaler.target_scaler_.min_[0])
+    else:
+        target_idx = (
+            config.FEATURE_COLS.index(config.TARGET_COL)
+            if config.TARGET_COL in config.FEATURE_COLS
+            else 0
+        )
+        target_scale = float(scaler.scale_[target_idx])
+        target_min = float(scaler.min_[target_idx])
     threshold_scaled = (
-        PEAK_THRESHOLD
-        * scaler.scale_[config.FEATURE_COLS.index(config.TARGET_COL)]
-        + scaler.min_[config.FEATURE_COLS.index(config.TARGET_COL)]
+        PEAK_THRESHOLD * target_scale + target_min
     )
     train_labels = (y_train >= threshold_scaled).astype(np.int32)
     cal_labels = (y_cal >= threshold_scaled).astype(np.int32)
@@ -196,8 +209,8 @@ def _report_regression(name, actual, predicted, scored_weeks):
 
 
 def main():
-    os.makedirs("results", exist_ok=True)
-    with DualLogger("results/expanding_window_cv_results.txt"):
+    os.makedirs(config.RESULTS_DIR, exist_ok=True)
+    with DualLogger(os.path.join(config.RESULTS_DIR, "expanding_window_cv_results.txt")):
         folds = build_expanding_window_folds(
             data_dir="Dataset/archive",
             fold_count=FOLD_COUNT,
@@ -235,7 +248,11 @@ def main():
             "scored_weeks": 0.0,
         }
         device = config.DEVICE
-        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+        context_idx = (
+            config.FEATURE_COLS.index(config.TARGET_COL)
+            if config.TARGET_COL in config.FEATURE_COLS
+            else (config.FEATURE_COLS.index("PM25") if "PM25" in config.FEATURE_COLS else 0)
+        )
 
         for fold_number, fold in enumerate(folds, 1):
             config.set_seed(config.RANDOM_SEED + fold_number)
@@ -262,14 +279,28 @@ def main():
             standard_cal = _boost_predictions(standard, X_cal_flat)
             standard_score = _boost_predictions(standard, X_score_flat)
 
+            if hasattr(fold_scaler, "target_scaler_"):
+                target_scale = float(fold_scaler.target_scaler_.scale_[0])
+                target_min = float(fold_scaler.target_scaler_.min_[0])
+                target_max = float(fold_scaler.target_scaler_.data_max_[0])
+            else:
+                target_idx = (
+                    config.FEATURE_COLS.index(config.TARGET_COL)
+                    if config.TARGET_COL in config.FEATURE_COLS
+                    else 0
+                )
+                target_scale = float(fold_scaler.scale_[target_idx])
+                target_min = float(fold_scaler.min_[target_idx])
+                target_max = float(fold_scaler.data_max_[target_idx])
+
             threshold_scaled = (
-                PEAK_THRESHOLD * fold_scaler.scale_[target_idx]
-                + fold_scaler.min_[target_idx]
+                PEAK_THRESHOLD * target_scale
+                + target_min
             )
             severity_span = max(
                 float(
-                    (fold_scaler.data_max_[target_idx] - PEAK_THRESHOLD)
-                    * fold_scaler.scale_[target_idx]
+                    (target_max - PEAK_THRESHOLD)
+                    * target_scale
                 ),
                 1e-6,
             )
@@ -347,8 +378,8 @@ def main():
                         score_prediction,
                     )
 
-            calibration_context = make_gating_context(X_cal, target_idx)
-            score_context = make_gating_context(X_score, target_idx)
+            calibration_context = make_gating_context(X_cal, context_idx)
+            score_context = make_gating_context(X_score, context_idx)
             gate_cal_predictions = np.column_stack(
                 (
                     asymmetric_cal,

@@ -41,7 +41,11 @@ def build_expanding_window_folds(
     raw_targets = frame[config.TARGET_COL].to_numpy(dtype=np.float64)
     timestamps = frame[config.TIME_COL].to_numpy()
     development_end = int(len(frame) * (config.TRAIN_RATIO + config.VAL_RATIO))
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = (
+        config.FEATURE_COLS.index(config.TARGET_COL)
+        if config.TARGET_COL in config.FEATURE_COLS
+        else 0
+    )
 
     _, _, valid_target_indices = create_sequences(
         all_features,
@@ -87,15 +91,24 @@ def build_expanding_window_folds(
         scaled_features = scaler.transform(all_features)
         scaled_targets = np.full(raw_targets.shape, np.nan, dtype=np.float64)
         finite_targets = np.isfinite(raw_targets)
-        scaled_targets[finite_targets] = (
-            raw_targets[finite_targets] * scaler.scale_[target_idx]
-            + scaler.min_[target_idx]
-        )
+        if config.TARGET_COL in config.FEATURE_COLS:
+            fold_target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            scaled_targets[finite_targets] = (
+                raw_targets[finite_targets] * scaler.scale_[fold_target_idx]
+                + scaler.min_[fold_target_idx]
+            )
+        else:
+            target_scaler = MinMaxScaler()
+            valid_train_targets = finite_targets[:scaler_fit_stop]
+            target_scaler.fit(raw_targets[:scaler_fit_stop][valid_train_targets].reshape(-1, 1))
+            scaler.target_scaler_ = target_scaler
+            scaled_targets[finite_targets] = target_scaler.transform(raw_targets[finite_targets].reshape(-1, 1)).flatten()
+            fold_target_idx = 0
         sequences, targets, target_indices = create_sequences(
             scaled_features,
             config.WINDOW_SIZE,
             config.HORIZON,
-            target_idx,
+            fold_target_idx,
             target_values=scaled_targets,
             return_target_indices=True,
         )

@@ -1,7 +1,7 @@
 """
 Plot Untuned XGBoost – Predicted vs Actual AQI at t+1.
 
-Loads best_xgb_model_untuned.json from results/no AQI - t+1,
+Loads best_xgb_model.json from results/no AQI - t+1,
 runs inference on the test split and saves a standalone figure.
 """
 
@@ -28,7 +28,7 @@ from src.data_loader import get_xgboost_data
 from src.evaluate import inverse_scale_predictions
 
 RESULTS_DIR = config.RESULTS_DIR
-MODEL_PATH  = os.path.join(RESULTS_DIR, "best_xgb_model_untuned.json")
+MODEL_PATH  = os.path.join(RESULTS_DIR, "best_xgb_model.json")
 
 
 def _raw_aqi(scaler, values):

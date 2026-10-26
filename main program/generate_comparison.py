@@ -1,4 +1,5 @@
 import os
+import re
 import sys
 import glob
 import json
@@ -42,6 +43,30 @@ def calc_metrics(y_actual, preds_unscaled, peak_mask, scaler, target_idx):
     amse = float(np.mean(weights * np.square(preds_unscaled - y_actual)))
 
     return rmse, mae, p_recall, p_mae, amse
+
+
+def _two_stage_cutoff(results_dir, classifier_path, fallback=0.5):
+    """Recover the OOF-calibrated two-stage cutoff from the walk-forward log."""
+    match = re.search(
+        r"two_stage_classifier_(\d{8}_\d{6})\.json$",
+        os.path.basename(classifier_path),
+    )
+    if not match:
+        return fallback
+    log_path = os.path.join(
+        results_dir, f"walk_forward_two_stage_{match.group(1)}.txt"
+    )
+    if not os.path.exists(log_path):
+        return fallback
+    with open(log_path, encoding="utf-8") as fh:
+        for line in fh:
+            if "OOF-calibrated two-stage cutoff" in line:
+                try:
+                    return float(line.strip().split("=")[-1])
+                except ValueError:
+                    return fallback
+    return fallback
+
 
 def main():
     config.set_seed(config.RANDOM_SEED)
@@ -270,7 +295,9 @@ def main():
         g_pred = g_model.predict(dtest)
         e_pred = e_model.predict(dtest)
 
-        two_stage_scaled = np.where(c_prob >= 0.50375, e_pred, g_pred)
+        two_stage_cutoff = _two_stage_cutoff(results_dir, clf_files[-1])
+        print(f"Two-stage cutoff (from walk-forward log): {two_stage_cutoff:.6f}")
+        two_stage_scaled = np.where(c_prob >= two_stage_cutoff, e_pred, g_pred)
         two_stage_unscaled = inverse_scale_predictions(scaler_xgb, two_stage_scaled.reshape(-1, 1), target_idx).ravel()
         predictions["Two-Stage Regressor"] = two_stage_unscaled
         rmse, mae, p_rec, p_mae, amse = calc_metrics(y_actual, two_stage_unscaled, peak_mask, scaler, target_idx)
@@ -350,7 +377,15 @@ def main():
                 )
 
         plt.axhline(config.PEAK_AQI_THRESHOLD, color="red", linestyle=":", alpha=0.7, label=f"Peak AQI Threshold ({int(config.PEAK_AQI_THRESHOLD)})")
-        plt.title(f"Comprehensive Model Comparison (No AQI in Features, 1-Hour Horizon t+1)", fontsize=14, fontweight="bold")
+        feature_desc = (
+            "No AQI in Features"
+            if config.TARGET_COL not in config.FEATURE_COLS
+            else "AQI in Features"
+        )
+        plt.title(
+            f"Comprehensive Model Comparison ({feature_desc}, t+{config.HORIZON} Horizon)",
+            fontsize=14, fontweight="bold",
+        )
         plt.xlabel("Test Step (Hours)", fontsize=12)
         plt.ylabel("AQI", fontsize=12)
         plt.grid(True, linestyle="--", alpha=0.5)

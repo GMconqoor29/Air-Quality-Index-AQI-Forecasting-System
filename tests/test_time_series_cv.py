@@ -30,11 +30,12 @@ class ExpandingWindowFoldTests(unittest.TestCase):
             )
 
         self.assertEqual(len(folds), 4)
-        target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
-        self.assertLess(
-            folds[0].scaler.data_max_[target_idx],
-            folds[-1].scaler.data_max_[target_idx],
-        )
+        if config.TARGET_COL in config.FEATURE_COLS:
+            target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+            target_maxes = [fold.scaler.data_max_[target_idx] for fold in folds]
+        else:
+            target_maxes = [fold.scaler.target_scaler_.data_max_[0] for fold in folds]
+        self.assertLess(target_maxes[0], target_maxes[-1])
         for fold in folds:
             self.assertGreater(len(fold.X_train), 0)
             self.assertGreater(len(fold.X_calibration), 0)

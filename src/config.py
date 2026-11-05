@@ -2,7 +2,7 @@ import os
 import torch
 
 # Results directory configuration
-RESULTS_DIR = os.getenv("RESULTS_DIR", "results/again")
+RESULTS_DIR = os.getenv("RESULTS_DIR", "results")
 os.makedirs(RESULTS_DIR, exist_ok=True)
 # Columns and targets
 TIME_COL = "Local Time"

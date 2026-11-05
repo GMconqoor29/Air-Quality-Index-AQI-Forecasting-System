@@ -23,7 +23,11 @@ RECALL_TARGETS = (0.50, 0.75, 0.90, 0.95, 0.99, 1.00)
 
 
 def _raw_aqi(scaler, values):
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = (
+        config.FEATURE_COLS.index(config.TARGET_COL)
+        if config.TARGET_COL in config.FEATURE_COLS
+        else 0
+    )
     return inverse_scale_predictions(scaler, values.reshape(-1, 1), target_idx)
 
 
@@ -64,7 +68,7 @@ def _print_threshold_metrics(name, labels, probabilities, timestamps, thresholds
 
 def main():
     run_id = datetime.now().strftime("%Y%m%d_%H%M%S")
-    with DualLogger(f"results/xgb_peak_classifier_{run_id}.txt"):
+    with DualLogger(os.path.join(config.RESULTS_DIR, f"xgb_peak_classifier_{run_id}.txt")):
         config.set_seed(config.RANDOM_SEED)
         (
             X_train,
@@ -91,7 +95,7 @@ def main():
 
         print(
             f"\nTraining AQI >= {config.PEAK_AQI_THRESHOLD:g} classifier "
-            f"(6-hour forecast horizon)..."
+            f"({config.HORIZON}-hour forecast horizon)..."
         )
         print(
             f"Training labels: {positive_count} peaks, {negative_count} non-peaks; "
@@ -159,9 +163,11 @@ def main():
             "Test", y_test, test_probabilities, test_timestamps, thresholds
         )
 
-        model_path = f"results/xgb_peak_classifier_{run_id}.json"
+        model_path = os.path.join(config.RESULTS_DIR, f"xgb_peak_classifier_{run_id}.json")
         model.save_model(model_path)
-        print(f"\nSaved classifier to {model_path}")
+        canonical_path = os.path.join(config.RESULTS_DIR, "xgb_peak_classifier.json")
+        model.save_model(canonical_path)
+        print(f"\nSaved classifier to {model_path} and {canonical_path}")
 
 
 if __name__ == "__main__":

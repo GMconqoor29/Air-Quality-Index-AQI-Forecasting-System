@@ -1,3 +1,4 @@
+import os
 import torch
 import torch.nn as nn
 from src.model import LSTMAQIModel
@@ -57,7 +58,11 @@ def train_model(model, train_loader, val_loader, criterion, optimizer, device,
         if v_loss < best_val:
             best_val = v_loss
             counter = 0
-            torch.save(model.state_dict(), checkpoint_path)
+            if checkpoint_path is not None:
+                dirname = os.path.dirname(checkpoint_path)
+                if dirname:
+                    os.makedirs(dirname, exist_ok=True)
+                torch.save(model.state_dict(), checkpoint_path)
         else:
             counter += 1
             if counter >= patience:

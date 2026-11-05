@@ -19,6 +19,23 @@ from src.peak_classifier import (
 
 
 class CausalPreprocessingTests(unittest.TestCase):
+    def test_feature_config_uses_selected_measurements_and_preserves_baseline(self):
+        self.assertEqual(
+            config.FEATURE_COLS,
+            [
+                "PM25", "PM10", "Temperature", "Relative Humidity", "Pressure",
+                "hour", "month",
+            ],
+        )
+        self.assertEqual(
+            config.BASELINE_FEATURE_COLS,
+            [
+                "AQI", "PM25", "PM10", "CO", "NO2", "O3", "SO2",
+                "Temperature", "Relative Humidity", "Wind Speed", "Pressure",
+                "hour", "month",
+            ],
+        )
+
     def test_loader_inserts_missing_hours_without_interpolating_values(self):
         rows = []
         for timestamp, aqi, pm25 in (
@@ -55,13 +72,13 @@ class CausalPreprocessingTests(unittest.TestCase):
         features.loc[0, "PM25"] = np.nan
         features.loc[2, "PM25"] = np.nan
         features.loc[10:11, "PM10"] = np.nan
-        features.loc[21, "SO2"] = np.nan
+        features.loc[21, "Pressure"] = np.nan
         features.loc[22, config.TARGET_COL] = np.nan
 
         train, validation, _ = _split_and_forward_fill_features(features)
         pm25_idx = config.FEATURE_COLS.index("PM25")
         pm10_idx = config.FEATURE_COLS.index("PM10")
-        so2_idx = config.FEATURE_COLS.index("SO2")
+        pressure_idx = config.FEATURE_COLS.index("Pressure")
 
         # A one-hour gap uses the previous value, not a later observation.
         self.assertEqual(train[0][2, pm25_idx], 1.0)
@@ -69,7 +86,7 @@ class CausalPreprocessingTests(unittest.TestCase):
         self.assertEqual(train[0][10, pm10_idx], 9.0)
         self.assertTrue(np.isnan(train[0][11, pm10_idx]))
         # At the split boundary, only the final training observation is carried forward.
-        self.assertEqual(validation[0][0, so2_idx], train[0][-1, so2_idx])
+        self.assertEqual(validation[0][0, pressure_idx], train[0][-1, pressure_idx])
         # AQI is filled as an input feature, but a missing AQI target stays missing.
         self.assertTrue(np.isnan(validation[1][1]))
 

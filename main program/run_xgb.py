@@ -10,7 +10,7 @@ from src.evaluate import print_baseline_metrics, print_xgb_evaluation_metrics
 from src.utils import DualLogger
 
 def main():
-    with DualLogger("results/xgb_results.txt") as logger:
+    with DualLogger(os.path.join(config.RESULTS_DIR, "xgb_results.txt")) as logger:
         config.set_seed(config.RANDOM_SEED)
 
         print("Loading and flattening data for XGBoost...")
@@ -65,7 +65,7 @@ def main():
             scaler,
             prefix="Test",
             plot=True,
-            plot_save_path="results/xgb_test_predictions.png",
+            plot_save_path=os.path.join(config.RESULTS_DIR, "xgb_test_predictions.png"),
             timestamps=test_timestamps,
         )
 
@@ -73,7 +73,7 @@ def main():
         _, _, te_ld, _ = get_dataloaders(data_dir='Dataset/archive')
         print_baseline_metrics(te_ld, scaler, prefix="Test")
         
-        model_path = 'results/best_xgb_model.json'
+        model_path = os.path.join(config.RESULTS_DIR, 'best_xgb_model.json')
         bst.save_model(model_path)
         print(f"\nSaved {model_path}!")
 

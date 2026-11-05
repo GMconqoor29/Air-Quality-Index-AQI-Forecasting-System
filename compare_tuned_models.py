@@ -27,15 +27,32 @@ from src.model import LSTMAQIModel, StackedLSTMAQIModel, GRUAQIModel
 from src.train import evaluate_model
 from src.evaluate import inverse_scale_predictions
 
+import glob
+
+def find_checkpoint(pattern):
+    """Resolve a checkpoint path under RESULTS_DIR.
+
+    Wildcard patterns glob for the newest matching file; literal filenames
+    return a path that may not exist yet (so callers can train it on demand).
+    """
+    if any(ch in pattern for ch in "*?["):
+        matches = glob.glob(os.path.join(config.RESULTS_DIR, pattern))
+        if not matches:
+            raise FileNotFoundError(
+                f"No checkpoint matching {pattern!r} found in {config.RESULTS_DIR}."
+            )
+        return max(matches, key=os.path.getmtime)
+    return os.path.join(config.RESULTS_DIR, pattern)
+
 # ── Checkpoint paths ─────────────────────────────────────────────────────────
-TUNED_BASE_LSTM_PT    = "results/tuned_best_model_20260716_170213.pt"
-TUNED_STACKED_LSTM_PT = "results/tuned_stacked_best_model_20260716_210810.pt"
-TUNED_GRU_PT          = "results/tuned_best_gru_20260716_231314.pt"
-TUNED_XGB_JSON        = "results/tuned_best_xgb_20260717_075406.json"
+TUNED_BASE_LSTM_PT    = find_checkpoint("tuned_best_model_*.pt")
+TUNED_STACKED_LSTM_PT = find_checkpoint("tuned_stacked_best_model_*.pt")
+TUNED_GRU_PT          = find_checkpoint("tuned_best_gru_*.pt")
+TUNED_XGB_JSON        = find_checkpoint("tuned_best_xgb_*.json")
 
 # ── Plot settings ─────────────────────────────────────────────────────────────
 NUM_SAMPLES   = 200          # number of test-set time steps to display
-SAVE_PATH     = "results/tuned_models_overlay.png"
+SAVE_PATH     = os.path.join(config.RESULTS_DIR, "tuned_models_overlay.png")
 FIGSIZE       = (18, 7)
 DPI           = 300
 
@@ -53,31 +70,43 @@ def get_nn_predictions(model, loader, scaler):
     """Run inference for a PyTorch model and return unscaled predictions."""
     criterion = nn.MSELoss()
     _, preds, y_true = evaluate_model(model, loader, criterion, config.DEVICE)
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
     preds_unscaled  = inverse_scale_predictions(scaler, preds,  target_idx)
     y_true_unscaled = inverse_scale_predictions(scaler, y_true, target_idx)
     return preds_unscaled, y_true_unscaled
 
 
-def load_lstm(checkpoint_path, hidden_size=128):
+def load_lstm(checkpoint_path, hidden_size=None):
+    state = torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True)
+    if hidden_size is None:
+        hidden_size = state['fc.weight'].shape[1] if 'fc.weight' in state else 128
     model = LSTMAQIModel(hidden_size=hidden_size, dropout=0.0)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True))
+    model.load_state_dict(state)
     model.to(config.DEVICE)
     model.eval()
     return model
 
 
-def load_stacked_lstm(checkpoint_path, hidden_size=256, num_layers=2):
+def load_stacked_lstm(checkpoint_path, hidden_size=None, num_layers=None):
+    state = torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True)
+    if hidden_size is None:
+        hidden_size = state['fc.weight'].shape[1] if 'fc.weight' in state else 256
+    if num_layers is None:
+        layer_indices = [int(k.split('_l')[1]) for k in state.keys() if '_l' in k and 'weight_ih_l' in k]
+        num_layers = max(layer_indices) + 1 if layer_indices else 2
     model = StackedLSTMAQIModel(hidden_size=hidden_size, num_layers=num_layers, dropout=0.0)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True))
+    model.load_state_dict(state)
     model.to(config.DEVICE)
     model.eval()
     return model
 
 
-def load_gru(checkpoint_path, hidden_size=256):
+def load_gru(checkpoint_path, hidden_size=None):
+    state = torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True)
+    if hidden_size is None:
+        hidden_size = state['fc.weight'].shape[1] if 'fc.weight' in state else 256
     model = GRUAQIModel(hidden_size=hidden_size, dropout=0.0)
-    model.load_state_dict(torch.load(checkpoint_path, map_location=config.DEVICE, weights_only=True))
+    model.load_state_dict(state)
     model.to(config.DEVICE)
     model.eval()
     return model
@@ -91,21 +120,21 @@ def main():
     _, _, te_ld, scaler = get_dataloaders()
     _, _, _, _, X_te_flat, y_te_flat, scaler_xgb = get_xgboost_data()
 
-    target_idx = config.FEATURE_COLS.index(config.TARGET_COL)
+    target_idx = config.FEATURE_COLS.index(config.TARGET_COL) if config.TARGET_COL in config.FEATURE_COLS else 0
 
     # ── 2. Tuned Base LSTM ────────────────────────────────────────────────────
     print("Loading Tuned Base LSTM …")
-    base_lstm = load_lstm(TUNED_BASE_LSTM_PT, hidden_size=128)
+    base_lstm = load_lstm(TUNED_BASE_LSTM_PT)
     pred_base, y_true = get_nn_predictions(base_lstm, te_ld, scaler)
 
     # ── 3. Tuned Stacked LSTM ────────────────────────────────────────────────
     print("Loading Tuned Stacked LSTM …")
-    stacked_lstm = load_stacked_lstm(TUNED_STACKED_LSTM_PT, hidden_size=256)
+    stacked_lstm = load_stacked_lstm(TUNED_STACKED_LSTM_PT)
     pred_stacked, _ = get_nn_predictions(stacked_lstm, te_ld, scaler)
 
     # ── 4. Tuned GRU ─────────────────────────────────────────────────────────
     print("Loading Tuned GRU …")
-    gru = load_gru(TUNED_GRU_PT, hidden_size=256)
+    gru = load_gru(TUNED_GRU_PT)
     pred_gru, _ = get_nn_predictions(gru, te_ld, scaler)
 
     # ── 5. Tuned XGBoost ─────────────────────────────────────────────────────

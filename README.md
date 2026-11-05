@@ -1,8 +1,8 @@
 # Air-Quality-Index-AQI-Forecasting-System
 
-A backend pipeline for forecasting the Air Quality Index (AQI) in Hanoi 6 hours ahead (t+6), using multiple model architectures — **LSTM**, **Stacked LSTM**, **GRU**, and **XGBoost (with Lag Features)** — built on PyTorch.
+A backend pipeline for forecasting the Air Quality Index (AQI) in Hanoi at configurable forecast horizons (including t+1 and t+6), using multiple model architectures — **LSTM**, **Stacked LSTM**, **GRU**, and **XGBoost (with Lag Features)** — built on PyTorch.
 
-The pipeline takes a 48-hour historical sliding window of environmental and air-quality IoT sensor data as input, and outputs the forecasted AQI value for the next 6 hours.
+The pipeline takes a 48-hour historical sliding window of environmental and air-quality IoT sensor data as input, and outputs the forecasted AQI value at the configured horizon. The default horizon is 6 hours.
 
 ---
 
@@ -131,7 +131,24 @@ python compare_tuned_models.py
 python compare_tuned_vs_untuned.py
 ```
 
-Logs, loss-curve plots, and prediction charts are saved to the `results/` folder.
+To train for t+1 and t+6 separately, set `HORIZON` for each run. Use a different
+`RESULTS_DIR` so the second run does not overwrite the first run's outputs:
+
+```bash
+HORIZON=1 RESULTS_DIR=results/t1 python "main program/main.py"
+HORIZON=6 RESULTS_DIR=results/t6 python "main program/main.py"
+```
+
+These commands use the Base LSTM; replace `main.py` with another training
+script to run a different model. On Windows PowerShell, use:
+
+```powershell
+$env:HORIZON = "1"; $env:RESULTS_DIR = "results/t1"; python "main program/main.py"
+$env:HORIZON = "6"; $env:RESULTS_DIR = "results/t6"; python "main program/main.py"
+```
+
+Logs, loss-curve plots, and prediction charts are saved to the configured
+`RESULTS_DIR` (the examples above use `results/t1/` and `results/t6/`).
 
 ---
 
@@ -196,8 +213,13 @@ Air-Quality-Index-AQI-Forecasting-System/
 
 ### LSTM / GRU Model Architecture
 
+The active input features are PM25, PM10, Temperature, Relative Humidity,
+Pressure, hour, and month. AQI is the forecast target, not an input feature.
+The previous 13-feature set is preserved as `BASELINE_FEATURE_COLS` in
+`src/config.py` for comparison.
+
 ```text
-Input: (batch_size, 48, 13)    ← 48 timesteps × 13 features
+Input: (batch_size, 48, 7)     ← 48 timesteps × 7 configured features
          │
     ┌────▼────┐
     │  LSTM   │  hidden_size = 128 (base) / 256 (tuned)
@@ -212,22 +234,22 @@ Input: (batch_size, 48, 13)    ← 48 timesteps × 13 features
     │ Linear  │  hidden_size → 1
     └────┬────┘
          │
-Output: (batch_size, 1)        ← forecasted AQI at t+6
+Output: (batch_size, 1)        ← forecasted AQI at t+HORIZON
 ```
 
 ### XGBoost (Lag Features) Model Architecture
 
 ```text
-Input 3D: (N, 48, 13)
+Input 3D: (N, 48, 7)
          │  reshape / flatten
-Input 2D: (N, 624)   ← 48 timesteps × 13 features = 624 lag features
+Input 2D: (N, 336)   ← 48 timesteps × 7 features = 336 lag features
          │
     ┌────▼────────────────┐
     │  XGBRegressor        │  booster = gbtree, max_depth = 5 (tuned)
     │  (Gradient Boosting) │  eta = 0.0349 (tuned)
     └────┬────────────────┘
          │
-Output: (N,)   ← forecasted AQI at t+6
+Output: (N,)   ← forecasted AQI at t+HORIZON
 ```
 
 ---
@@ -332,6 +354,9 @@ estimate under the observed prevalence shift.
 
 ### Test Set Performance vs. Baseline
 
+The metrics below are retained from the earlier t+6 experiment and do not
+represent a rerun with the current seven-feature input or the t+1 horizon.
+
 | Model / Baseline | Test RMSE | Test MAE |
 | :--- | :---: | :---: |
 | Naive Baseline (Persistence) | 49.1951 | 36.8173 |
@@ -355,7 +380,7 @@ For the full breakdown of train/validation performance, hyperparameter analysis,
 - Integrate real-time IoT ingestion via REST API or MQTT instead of running offline on static CSV files
 - Improve forecasting of high AQI spikes (>200) using Huber Loss, Quantile Loss, or oversampling
 - Extend hyperparameter tuning coverage and trial budget for XGBoost
-- Extend to multi-step forecasting (t+1 through t+24) instead of single-step t+6
+- Extend to simultaneous multi-horizon forecasting (for example, predict t+1 through t+24 in one model) instead of training separate single-horizon runs
 - Explore Transformer/Attention architectures or an ensemble of LSTM and XGBoost
 
 ---

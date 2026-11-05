@@ -29,3 +29,9 @@ e2e_demo/skill-activation.log
 # OS
 .DS_Store
 Thumbs.db
+.agents/
+
+# Environment variables & secrets
+.env
+*.db
+*.sqlite3

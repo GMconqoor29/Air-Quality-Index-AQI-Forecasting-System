@@ -12,7 +12,7 @@ from src.evaluate import print_evaluation_metrics, print_baseline_metrics
 from src.utils import DualLogger
 
 def main():
-    with DualLogger("results/gru_results.txt") as logger:
+    with DualLogger(os.path.join(config.RESULTS_DIR, "gru_results.txt")) as logger:
         config.set_seed(config.RANDOM_SEED)
         print(f"Using device: {config.DEVICE}")
 
@@ -34,16 +34,20 @@ def main():
             device=config.DEVICE, 
             epochs=config.EPOCHS, 
             patience=5,
-            checkpoint_path="best_gru_model.pt"
+            checkpoint_path=os.path.join(config.RESULTS_DIR, "gru_best_model.pt")
         )
 
         from src.visualize import plot_loss_curve
-        plot_loss_curve(history, save_path="results/gru_loss_curve.png")
+        plot_loss_curve(history, save_path=os.path.join(config.RESULTS_DIR, "gru_loss_curve.png"))
 
         print("\nEvaluating best model...")
         print_evaluation_metrics(model, tr_ld, criterion, config.DEVICE, scaler, prefix="Train", plot=False)
         print_evaluation_metrics(model, va_ld, criterion, config.DEVICE, scaler, prefix="Val", plot=False)
-        print_evaluation_metrics(model, te_ld, criterion, config.DEVICE, scaler, prefix="Test", plot=True, plot_save_path="results/gru_test_predictions.png")
+        print_evaluation_metrics(
+            model, te_ld, criterion, config.DEVICE, scaler,
+            prefix="Test", plot=True,
+            plot_save_path=os.path.join(config.RESULTS_DIR, "gru_test_predictions.png")
+        )
 
 if __name__ == "__main__":
     main()

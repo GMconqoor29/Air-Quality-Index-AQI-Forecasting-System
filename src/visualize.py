@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import src.config as config
 
 def plot_loss_curve(history, save_path="loss_curve.png"):
     """
@@ -17,7 +18,7 @@ def plot_loss_curve(history, save_path="loss_curve.png"):
     plt.close()
     print(f"Saved loss curve to {save_path}")
 
-def plot_predictions(y_true, y_pred, title="AQI Predictions (t+6)", save_path="predictions.png", num_samples=200):
+def plot_predictions(y_true, y_pred, title=None, save_path="predictions.png", num_samples=200):
     """
     Plots actual vs predicted AQI values.
     num_samples limits the plot to the first N time steps for readability.
@@ -31,7 +32,7 @@ def plot_predictions(y_true, y_pred, title="AQI Predictions (t+6)", save_path="p
     plt.plot(actual_slice, label='Actual AQI', color='blue', marker='.', linewidth=1.5, zorder=1)
     plt.plot(pred_slice, label='Predicted AQI', color='orange', marker='.', linewidth=1.5, alpha=0.8, zorder=2)
     
-    plt.title(title)
+    plt.title(title or f"AQI Predictions (t+{config.HORIZON})")
     plt.xlabel('Time Step')
     plt.ylabel('AQI')
     plt.legend()
